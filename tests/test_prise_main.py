@@ -69,7 +69,7 @@ def take_action2(snek, env):
 
 N_SNEKS = 2
 
-env = MultiSneks(n_sneks= 1, size=(24, 24), obs_type='rgb', add_walls=True)
+env = MultiSneks(n_sneks= N_SNEKS, size=(24, 24), obs_type='rgb', add_walls=True)
 obs = env.reset()
 
 dones = [False] * env.N_SNEKS

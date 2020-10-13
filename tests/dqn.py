@@ -39,7 +39,7 @@ def get_action_eps_greedy(state, q_net,epsilon):
 def train_dqn_offpolicy(env, n_episodes, gamma, epsilon):
     size = env.SIZE
     q_net = DQN(size)
-    opt = torch.optim.SGD(q_net.parameters(), lr = 1e-3)
+    opt = torch.optim.Adam(q_net.parameters(), lr = 1e-3)
 
     ep_lengths, total_rewards = [], []
 
@@ -66,7 +66,7 @@ def train_dqn_offpolicy(env, n_episodes, gamma, epsilon):
             gamma_vect = torch.tensor([gamma**t for t in range(l)])
             r_vect = torch.tensor([r for _,_,r in sar[i:]], dtype = torch.float32)
             sample_val = torch.dot(gamma_vect,r_vect)
-            s,a,r = sar[i]
+            s,a,_ = sar[i]
             predicted_val = q_net(s)[a]
             loss+= (sample_val-predicted_val)**2
         loss.backward()
@@ -88,7 +88,7 @@ def train_dqn_offpolicy(env, n_episodes, gamma, epsilon):
 
 
 if __name__ == "__main__":
-    env = SingleSnek(add_walls=True)
+    env = SingleSnek(size = (28,28), add_walls=True)
     n_episodes=5000
     gamma = .9
     epsilon = .1

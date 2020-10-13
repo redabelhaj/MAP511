@@ -7,7 +7,7 @@ import torch
 from time import sleep
 
 
-env = SingleSnek(add_walls=True)
+env = SingleSnek(size = (28,28),add_walls=True)
 state = env.reset()
 size = env.SIZE
 q_net = DQN(size)
