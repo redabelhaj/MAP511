@@ -12,7 +12,7 @@ def load_data(path):
             rew.append(r)
     return batch, rew
 
-def running_mean(batch, rew, N=4):
+def running_mean(batch, rew, N=1):
     m = len(batch)
     cumsum = np.cumsum(np.insert(rew, 0, 0))
     running_mean = (cumsum[N:] - cumsum[:-N]) / float(N)
@@ -20,7 +20,7 @@ def running_mean(batch, rew, N=4):
     batch2 = np.linspace(0, m, num = s)
     return batch2, running_mean
 
-def plot(path, label, N=50):
+def plot(path, label, N=1):
     b,r = load_data(path)
     b, r = running_mean(b,r, N=N)
     plt.plot(b,r, label = label)
