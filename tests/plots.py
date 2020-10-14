@@ -20,7 +20,7 @@ def running_mean(batch, rew, N=1):
     batch2 = np.linspace(0, m, num = s)
     return batch2, running_mean
 
-def plot(path, label, N=1):
+def plot(path, label, N=200):
     b,r = load_data(path)
     b, r = running_mean(b,r, N=N)
     plt.plot(b,r, label = label)
