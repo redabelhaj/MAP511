@@ -130,17 +130,21 @@ def train_dqn(env, n_episodes, batch_size, gamma, capacity = 10000, target_updat
     for i_ep in tqdm.tqdm(range(n_episodes)):
         # play ep while storing transition in replay buffer
         done = False
-        state = env.reset()
+        new_frame = env.reset()
+        state = new_frame
+        frame = new_frame
         alpha_t =  1-np.exp(-eps_rate*i_ep)
         eps_i = alpha_t*eps_deb + (1-alpha_t)*eps_fin
         action = get_action_eps_greedy(state, policy_net, eps_i)
         length,this_reward = 0,0
         while not(done):
             length+=1
-            new_state, reward, done, _ = env.step(action)
+            new_frame, reward, done, _ = env.step(action)
             this_reward+=reward
+            new_state = new_frame-frame
             transition = (state, action,new_state,reward)
             replay_buffer.push(transition)
+            frame = new_frame
             state = new_state
             action = get_action_eps_greedy(state, policy_net, eps_i)
             env.render(mode = 'human')
