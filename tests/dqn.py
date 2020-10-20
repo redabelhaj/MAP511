@@ -147,7 +147,7 @@ def train_dqn(env, n_episodes, batch_size, gamma, capacity = 10000, target_updat
             frame = new_frame
             state = new_state
             action = get_action_eps_greedy(state, policy_net, eps_i)
-            env.render(mode = 'human')
+            # env.render(mode = 'human')
         
         if len(replay_buffer)>=batch_size:
             # sample a batch from the buffer and optimize
