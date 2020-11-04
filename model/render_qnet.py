@@ -22,16 +22,4 @@ while not done:
     env.render(mode='human')
     sleep(0.1)
 
-# lengths = []
-# for _ in range(500):
-#     obs = env.reset()
-#     done = False
-#     n_step =0
-#     while not done:
-#         n_step+=1
-#         action_values = q_net(torch.tensor(obs, dtype = torch.float32))
-#         action = torch.argmax(action_values)
-#         obs, rewards, done, info = env.step(action)
-#     lengths.append(n_step)
 
-# print(sum(lengths)/500)
