@@ -47,22 +47,25 @@ def get_action(state, net):
     return np.random.choice(4, p = probs.detach().numpy())
     
 
-def play_episode(env, net):
-    new_frame = env.reset()
-    state = new_frame
-    frame = new_frame
-    action = get_action(state, net)
-    done = False
+def play_episode(env, net, n_episodes=1):
+
     transitions = []
-    while not(done):
-        new_frame, reward, done, _ = env.step(action)
-        new_state = new_frame-frame
-        transition = (state, action,reward)
-        transitions.append(transition)
+
+    for _ in range(n_episodes):
+        new_frame = env.reset()
+        state = new_frame
         frame = new_frame
-        state = new_state
-        action =get_action(state, net)
-        # env.render()
+        action = get_action(state, net)
+        done = False
+        while not(done):
+            new_frame, reward, done, _ = env.step(action)
+            new_state = new_frame-frame
+            transition = (state, action,reward)
+            transitions.append(transition)
+            frame = new_frame
+            state = new_state
+            action =get_action(state, net)
+            # env.render()
     return transitions
 
 
@@ -86,7 +89,7 @@ def make_tensors(transitions, gamma):
 
 
 
-def train(env, n_episodes, gamma):
+def train(env, n_episodes, gamma, batch_size = 32):
     size = env.SIZE
     net = ActorCriticNet(size)
     opt = torch.optim.RMSprop(net.parameters())
@@ -98,9 +101,8 @@ def train(env, n_episodes, gamma):
     total_rewards = []
     for i_ep in tqdm.tqdm(range(n_episodes)):
         
-        # play ep while storing transition in replay buffer
         opt.zero_grad()
-        transitions = play_episode(env, net)
+        transitions = play_episode(env, net, n_episodes=batch_size)
         states, actions, gt = make_tensors(transitions, gamma)
         out,values = net(states)
         actions2 = actions.squeeze()
@@ -112,15 +114,15 @@ def train(env, n_episodes, gamma):
         loss2.backward()
         opt.step()
 
-        length = len(transitions)
+        length = len(transitions)/batch_size
         all_rewards = [t for _,_,t in transitions]
-        this_reward = sum(all_rewards)
+        this_reward = sum(all_rewards)/batch_size
         ep_lengths.append(length)
         total_rewards.append(this_reward)
 
-        with open("ep_lengths_a2c", 'a') as f:
+        with open("ep_lengths_a2c.txt", 'a') as f:
             f.write(str(round(length, 3)) + '\n')
-        with open("ep_rewards_a2c", 'a') as f:
+        with open("ep_rewards_a2c.txt", 'a') as f:
             f.write(str(round(this_reward, 3)) + '\n')
     return net, ep_lengths, total_rewards
 
@@ -129,8 +131,8 @@ if __name__ == "__main__":
     env = SingleSnek(size = (15,15), add_walls=True, obs_type="rgb")
     n_episodes=500
     gamma = .99
-    # with open("ep_rewards_a2c","r+") as f:
-    #         f.truncate(0)
-    # with open("ep_lengths_a2c","r+") as f:
-    #         f.truncate(0)
+    with open("ep_rewards_a2c.txt","r+") as f:
+            f.truncate(0)
+    with open("ep_lengths_a2c.txt","r+") as f:
+            f.truncate(0)
     net, ep_lengths, total_rewards = train(env, n_episodes, gamma)

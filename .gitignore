@@ -3,6 +3,7 @@
 *.pyc
 # images
 *.png
+*.txt
 tests/__pycache__
 sneks/core/__pycache__/*.pyc
 tests/ep_lengths
