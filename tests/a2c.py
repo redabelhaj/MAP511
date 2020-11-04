@@ -129,10 +129,11 @@ def train(env, n_episodes, gamma, batch_size = 32):
 
 if __name__ == "__main__":
     env = SingleSnek(size = (15,15), add_walls=True, obs_type="rgb")
-    n_episodes=500
+    n_episodes=5
     gamma = .99
     with open("ep_rewards_a2c.txt","r+") as f:
             f.truncate(0)
     with open("ep_lengths_a2c.txt","r+") as f:
             f.truncate(0)
     net, ep_lengths, total_rewards = train(env, n_episodes, gamma)
+    torch.save(net.state_dict(), "a2c_actor.txt")
