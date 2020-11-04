@@ -20,7 +20,7 @@ def running_mean(batch, rew, N=1):
     batch2 = np.linspace(0, m, num = s)
     return batch2, running_mean
 
-def plot(path, label, N=200):
+def plot(path, label, N=50):
     b,r = load_data(path)
     b, r = running_mean(b,r, N=N)
     plt.plot(b,r, label = label)
@@ -48,7 +48,7 @@ plt.xlabel("# episode")
 plt.ylabel("length")
 plt.legend()
 plt.title("episode length")
-plt.savefig("episode_lengths_a2c")
+plt.savefig("episode_lengths_a2c_2.png")
 plt.clf()
 
 plot("ep_rewards_a2c.txt", label = 'episode rewards')
@@ -56,5 +56,5 @@ plt.ylabel("rewards")
 plt.xlabel("# episode")
 plt.title("sum of rewards during the episode")
 plt.legend()
-plt.savefig("episode_rewards_a2c")
+plt.savefig("episode_rewards_a2c_2.png")
 plt.clf()

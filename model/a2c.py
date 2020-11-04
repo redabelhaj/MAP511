@@ -36,13 +36,13 @@ class ActorCriticNet(torch.nn.Module):
         out = self.conv2(out)
         out = out.flatten(1)
         logits, values = self.actor(out), self.critic(out)
-        probs = torch.softmax(logits, dim = -1)
-        return probs, values
+        return logits, values
 
 
 def get_action(state, net):
     tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
-    probs, _ = net(tens)
+    logits, _ = net(tens)
+    probs = torch.softmax(logits, dim=-1)
     probs = probs.squeeze()
     return np.random.choice(4, p = probs.detach().numpy())
     
@@ -129,7 +129,7 @@ def train(env, n_episodes, gamma, batch_size = 32):
 
 if __name__ == "__main__":
     env = SingleSnek(size = (15,15), add_walls=True, obs_type="rgb")
-    n_episodes=5
+    n_episodes=500
     gamma = .99
     with open("ep_rewards_a2c.txt","r+") as f:
             f.truncate(0)

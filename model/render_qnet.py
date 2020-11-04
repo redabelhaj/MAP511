@@ -21,5 +21,3 @@ while not done:
     obs, rewards, done, info = env.step(action)
     env.render(mode='human')
     sleep(0.1)
-
-
