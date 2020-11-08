@@ -43,12 +43,12 @@ class ActorCriticNet(torch.nn.Module):
 
 
 class PPO:
-    def __init__(self, size, name,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2):
+    def __init__(self, size, name,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2):
         self.net = ActorCriticNet(size)
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = (15,15), add_walls=True, obs_type="rgb")
+        self.env = SingleSnek(size = size, add_walls=walls, obs_type="rgb")
         self.n_epochs = n_epochs
         self.eps = eps
         self.gamma = gamma
@@ -101,11 +101,19 @@ class PPO:
         return transitions
     
     def get_dataset(self,map_results):
-        #map results : liste de batch_size listes de transisions => les concaténer
+        ###  : LES REWARDS DONT NORMALISES SUR UN BATCH
         full_list = []
+        list_rewards = []
         for transitions in map_results:
             full_list += transitions
-        return full_list
+            for _,_,_,g, _ in transitions:
+                list_rewards.append(g)
+        gt_tens = torch.tensor(list_rewards, dtype = torch.float32)
+        mean, std = torch.mean(gt_tens),torch.std(gt_tens)
+        gt_tens = (gt_tens-mean)/(std + 1e-8)
+
+        final_list  = [(s,a,p,gt_tens[i],v) for i,(s,a,p,_,v) in enumerate(full_list) ]
+        return final_list
 
     def get_actor_loss(self, states, actions, probs, advs):
         logits, _ = self.net(states)
@@ -173,23 +181,25 @@ class PPO:
 
 if __name__ == "__main__":
     mp.set_start_method('spawn')
-    size = (15, 15)
-    ppo = PPO(size, 'ppo')
+    torch.manual_seed(0)
+    size = (20, 20)
+    ppo = PPO(size, 'ppo',walls=True, n_iter=500, batch_size=16)
     bs = ppo.batch_size
-    best_reward = -1
-    best_length = -1
+    best_reward = -0.75
+    best_length = 57
 
-    ppo.net.load_state_dict(torch.load(ppo.name + '_state_dict.txt'))
-    with open("ep_rewards_"+ppo.name+".txt","r+") as f:
-            f.truncate(0)
-    with open("ep_lengths_"+ppo.name+".txt","r+") as f:
-            f.truncate(0)
+    # ppo.net.load_state_dict(torch.load(ppo.name + '_state_dict.txt'))
+    # with open("ep_rewards_"+ppo.name+".txt","r+") as f:
+    #         f.truncate(0)
+    # with open("ep_lengths_"+ppo.name+".txt","r+") as f:
+    #         f.truncate(0)
     debut = time.time()
     with mp.Pool() as pool:
         for it in range(ppo.n_iter):
             
             args = bs*[ppo]
             map_results = pool.map_async(PPO.play_one_episode, args).get()
+            ppo.one_training_step(map_results)
             mean_reward, mean_length = ppo.get_stats(map_results)
             if mean_reward > best_reward:
                 print('\n', "********* new best reward ! *********** ", round(mean_reward, 3), '\n')
@@ -205,4 +215,3 @@ if __name__ == "__main__":
             with open("ep_lengths_"+ppo.name+".txt","a") as f:
                 f.write(str(round(mean_length, 3))+ '\n')
             print('iteration : ', it, 'reward : ', round(mean_reward, 3),'length : ', round(mean_length, 3),'temps : ', round(time.time()-debut, 3), '\n')
-            ppo.one_training_step(map_results)
