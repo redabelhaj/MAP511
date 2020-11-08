@@ -56,6 +56,12 @@ class SingleSnek(gym.Env):
         elif self.obs_type == 'layered':
             # Only 2 layers here, food and snek
             self.observation_space = spaces.Box(low=0, high=255, shape=(self.SIZE[0]*obs_zoom, self.SIZE[1]*obs_zoom, 2), dtype=np.uint8)
+        elif self.obs_type == 'simplest':
+            # simple state space : head pos, fruit pos, current direction
+            max_size = max(size[0], size[1])
+            self.observation_space = spaces.Box(low = 0, high = max_size, shape = [5], dtype = np.uint8)
+
+        
         else:
             raise(Exception('Unrecognized observation mode.'))
         # Action space
@@ -107,6 +113,8 @@ class SingleSnek(gym.Env):
             s = np.array([(_state == self.world.FOOD).astype(int), ((_state == self.world.sneks[0].snek_id) or (_state == self.world.sneks[0].snek_id+1)).astype(int)])
             s = np.transpose(s, [1, 2, 0])
             return s
+        elif self.obs_type == 'simplest':
+            return self.world.get_observation(simple = True)
         else:
             return _state
 

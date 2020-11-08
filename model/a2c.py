@@ -41,17 +41,53 @@ class ActorCriticNet(torch.nn.Module):
         return logits, values
 
 
+
+class SimpleACNet(torch.nn.Module):
+    """
+    Actor critic net in the case of simple observation (head pos, fruit pos, current direction ) 
+    observation is a vector of 5 components
+    """
+
+    def __init__(self, hidden_size):
+        super(SimpleACNet,self).__init__()
+        self.layer1 = torch.nn.Linear(5, hidden_size)
+        self.layer2 = torch.nn.Linear(hidden_size, hidden_size)
+        self.actor = torch.nn.Linear(hidden_size, 4)
+        self.critic = torch.nn.Linear(hidden_size, 1)
+
+    def forward(self, obs):
+        out = self.layer1(obs)
+        out = torch.sigmoid(out)
+        out = self.layer2(out)
+        out = torch.sigmoid(out)
+        logits = self.actor(out)
+        value = self.critic(out)
+        return logits, value
+
+
+
 class A2C:
-    def __init__(self, size, name, walls=True, n_iter = 500, batch_size=32, gamma=.99):
+    def __init__(self, size, name, simple = False, hidden_size = 30, walls=True, n_iter = 500, batch_size=32, gamma=.99):
         self.net = ActorCriticNet(size)
         self.name = name
+        self.simple = simple
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size, add_walls=walls, obs_type="rgb")
+        if simple:
+            self.env = SingleSnek(size = size, add_walls=walls, obs_type='simplest')
+            self.net = SimpleACNet(hidden_size)
+        else:
+            self.env = SingleSnek(size = size, add_walls=walls, obs_type="rgb")
+        
         self.gamma = gamma
+        self.optimizer = torch.optim.Adam(self.net.parameters())
 
     def get_action(self, state):
-        tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
+        if not(self.simple):
+            tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
+
+        else:
+            tens = torch.tensor(state, dtype = torch.float32)
         logits, _ = self.net(tens)
         probs = torch.softmax(logits, dim=-1)
         probs = probs.squeeze()
@@ -67,9 +103,15 @@ class A2C:
         sts, acts, rews = [],[], [] 
         while not(done):
             new_frame, reward, done, _ = self.env.step(action)
-            new_state = new_frame-frame
+            if not(self.simple):
+                new_state = new_frame-frame
+            else:
+                new_state = new_frame
             a_t = torch.tensor([action], dtype = torch.int64)
-            s_t = torch.tensor(state, dtype = torch.float32).permute(2,0,1) 
+            if not(self.simple):
+                s_t = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
+            else:
+                s_t = torch.tensor(state, dtype = torch.float32)
             sts.append(s_t)
             acts.append(a_t)
             rews.append(reward)
@@ -97,8 +139,8 @@ class A2C:
             for _,_,g in transitions:
                 list_rewards.append(g)
         gt_tens = torch.tensor(list_rewards, dtype = torch.float32)
-        mean, std = torch.mean(gt_tens),torch.std(gt_tens)
-        gt_tens = (gt_tens-mean)/(std + 1e-8)
+        # mean, std = torch.mean(gt_tens),torch.std(gt_tens)
+        # gt_tens = (gt_tens-mean)/(std + 1e-8)
 
         final_list  = [(s,a,gt_tens[i]) for i,(s,a,_) in enumerate(full_list) ]
         return final_list
@@ -118,56 +160,90 @@ class A2C:
 
     def one_training_step(self, map_results):
         dataset = self.get_dataset(map_results)
-        dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=1)
-        optimizer = torch.optim.Adam(self.net.parameters())
+        dataloader = DataLoader(dataset, batch_size=len(dataset), shuffle=True, num_workers=1)
         ce = torch.nn.CrossEntropyLoss(reduction='mean')
         mse = torch.nn.MSELoss()
+        tot_loss_critic = 0
         for s,a,g in dataloader:
-            optimizer.zero_grad()
+            self.optimizer.zero_grad()
             out,values = self.net(s)
             values = values.squeeze()
             values2 = values.detach()
             loss_actor = (ce(out, a.squeeze())*(g-values2)).mean()            
             loss_critic = mse(values, g)
-            loss_actor.backward(retain_graph = True)
-            loss_critic.backward()
-            optimizer.step()
+            tot_loss_critic+= loss_critic.item()
+            total_loss = .5*loss_actor + .5*loss_critic
+            total_loss.backward()
+            # loss_actor.backward(retain_graph = True)
+            # loss_critic.backward()
+           
+            # print("states : ", s[0,:], '\n')
+            # print("action :", a[0,:], '\n')
+            # print("retour : ", g[0], '\n')
+            # print("valeur prédite : ", values[0].item())
+            # exit()
+            self.optimizer.step()
+
+        with open("loss_critic_"+self.name+".txt","a") as f:
+                f.write(str(round(tot_loss_critic, 3))+ '\n')
+        
 
 
 
 if __name__ == "__main__":
     mp.set_start_method('spawn')
     torch.manual_seed(0)
-    size = (20, 20)
-    a2c = A2C(size, 'a2c',walls=True, n_iter=500, batch_size=16)
+    size = (10, 10)
+    a2c = A2C(size, 'a2c',simple=True,walls=True, n_iter=500, batch_size=64, gamma=.99)
     bs = a2c.batch_size
     best_reward = -1
     best_length = 0
 
-    a2c.net.load_state_dict(torch.load(a2c.name + '_state_dict.txt'))
+    # a2c.net.load_state_dict(torch.load(a2c.name + '_state_dict.txt'))
     with open("ep_rewards_"+a2c.name+".txt","r+") as f:
             f.truncate(0)
     with open("ep_lengths_"+a2c.name+".txt","r+") as f:
             f.truncate(0)
+    with open("loss_critic_"+a2c.name+".txt","r+") as f:
+            f.truncate(0)
     debut = time.time()
-    with mp.Pool() as pool:
-        for it in range(a2c.n_iter):
+    # with mp.Pool() as pool:
+    #     for it in range(a2c.n_iter):
             
-            args = bs*[a2c]
-            map_results = pool.map_async(A2C.play_one_episode, args).get()
-            a2c.one_training_step(map_results)
-            mean_reward, mean_length = a2c.get_stats(map_results)
-            if mean_reward > best_reward:
-                print('\n', "********* new best reward ! *********** ", round(mean_reward, 3), '\n')
-                best_reward = mean_reward
-                torch.save(a2c.net.state_dict(), a2c.name + '_state_dict.txt')
-            if mean_length > best_length:
-                print('\n', "********* new best length ! *********** ", round(mean_length, 3), '\n')
-                best_length = mean_length
-                torch.save(a2c.net.state_dict(), a2c.name + '_state_dict.txt')
+    #         args = bs*[a2c]
+    #         map_results = pool.map_async(A2C.play_one_episode, args).get()
+    #         a2c.one_training_step(map_results)
+    #         mean_reward, mean_length = a2c.get_stats(map_results)
+    #         if mean_reward > best_reward:
+    #             print('\n', "********* new best reward ! *********** ", round(mean_reward, 3), '\n')
+    #             best_reward = mean_reward
+    #             torch.save(a2c.net.state_dict(), a2c.name + '_state_dict.txt')
+    #         if mean_length > best_length:
+    #             print('\n', "********* new best length ! *********** ", round(mean_length, 3), '\n')
+    #             best_length = mean_length
+    #             torch.save(a2c.net.state_dict(), a2c.name + '_state_dict.txt')
 
-            with open("ep_rewards_"+a2c.name+".txt","a") as f:
-                f.write(str(round(mean_reward, 3))+ '\n')
-            with open("ep_lengths_"+a2c.name+".txt","a") as f:
-                f.write(str(round(mean_length, 3))+ '\n')
-            print('iteration : ', it, 'reward : ', round(mean_reward, 3),'length : ', round(mean_length, 3),'temps : ', round(time.time()-debut, 3), '\n')
+    #         with open("ep_rewards_"+a2c.name+".txt","a") as f:
+    #             f.write(str(round(mean_reward, 3))+ '\n')
+    #         with open("ep_lengths_"+a2c.name+".txt","a") as f:
+    #             f.write(str(round(mean_length, 3))+ '\n')
+    #         print('iteration : ', it, 'reward : ', round(mean_reward, 3),'length : ', round(mean_length, 3),'temps : ', round(time.time()-debut, 3), '\n')
+    for it in range(a2c.n_iter):
+        args = bs*[a2c]
+        map_results = list(map(A2C.play_one_episode, args))
+        a2c.one_training_step(map_results)
+        mean_reward, mean_length = a2c.get_stats(map_results)
+        if mean_reward > best_reward:
+            print('\n', "********* new best reward ! *********** ", round(mean_reward, 3), '\n')
+            best_reward = mean_reward
+            torch.save(a2c.net.state_dict(), a2c.name + '_state_dict.txt')
+        if mean_length > best_length:
+            print('\n', "********* new best length ! *********** ", round(mean_length, 3), '\n')
+            best_length = mean_length
+            torch.save(a2c.net.state_dict(), a2c.name + '_state_dict.txt')
+
+        with open("ep_rewards_"+a2c.name+".txt","a") as f:
+            f.write(str(round(mean_reward, 3))+ '\n')
+        with open("ep_lengths_"+a2c.name+".txt","a") as f:
+            f.write(str(round(mean_length, 3))+ '\n')
+        print('iteration : ', it, 'reward : ', round(mean_reward, 3),'length : ', round(mean_length, 3),'temps : ', round(time.time()-debut, 3), '\n')
