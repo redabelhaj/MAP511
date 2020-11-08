@@ -14,47 +14,42 @@ import torch.multiprocessing as mp
 import time
 
 
-class ActorCriticNet(torch.nn.Module):
+class SimpleACNet(torch.nn.Module):
+    """
+    Actor critic net in the case of simple observation (head pos, fruit pos, current direction ) 
+    observation is a vector of 5 components
+    """
 
-    def __init__(self, size):
-        super(ActorCriticNet, self).__init__()
-        self.conv1 = torch.nn.Conv2d(3, 3, 2)
-        self.conv2 = torch.nn.Conv2d(3, 2, 2, stride=2)
-        out_size = (size[0]- 1)
-        out_size = int((out_size -2 )/2 +1)
-
-        self.actor = torch.nn.Linear(2*out_size**2, 4)
-        self.critic = torch.nn.Linear(2*out_size**2, 1)
+    def __init__(self, hidden_size):
+        super(SimpleACNet,self).__init__()
+        self.layer1 = torch.nn.Linear(5, hidden_size)
+        self.layer2 = torch.nn.Linear(hidden_size, hidden_size)
+        self.actor = torch.nn.Linear(hidden_size, 4)
+        self.critic = torch.nn.Linear(hidden_size, 1)
 
     def forward(self, obs):
-        s = len(obs.size())
-        if s ==2:
-            tens2 = obs.unsqueeze(0).unsqueeze(0)
-        if s == 3:
-            tens2 = obs.unsqueeze(0)
-        if s ==4 :
-            tens2 = obs
-        out = self.conv1(tens2)
+        out = self.layer1(obs)
         out = torch.sigmoid(out)
-        out = self.conv2(out)
-        out = out.flatten(1)
-        logits, values = self.actor(out), self.critic(out)
-        return logits, values
+        out = self.layer2(out)
+        out = torch.sigmoid(out)
+        logits = self.actor(out)
+        value = self.critic(out)
+        return logits, value
 
-class PPO:
-    def __init__(self, size, namewalls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2):
-        self.net = ActorCriticNet(size)
+class SimplePPO:
+    def __init__(self, size, name, hidden_size = 30,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2):
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size, add_walls=walls, obs_type="rgb")
+        self.env = SingleSnek(size = size, add_walls=walls, obs_type='simplest')
+        self.net = SimpleACNet(hidden_size)
         self.n_epochs = n_epochs
         self.eps = eps
         self.gamma = gamma
         self.target_kl = target_kl
     
     def get_action_prob(self, state):
-        tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
+        tens = torch.tensor(state, dtype = torch.float32)
         logits, _ = self.net(tens)
         probs = torch.softmax(logits, dim=-1)
         probs = probs.squeeze().detach()
@@ -70,7 +65,7 @@ class PPO:
         sts, ats, pts, rts = [], [], [], []
         while not(done):
             new_obs, reward, done, _ = self.env.step(action)
-            s_t  = torch.tensor(obs, dtype = torch.float32).permute(2,0,1)
+            s_t  = torch.tensor(obs, dtype = torch.float32)
             a = 4*[0]
             a[action] =1
             a_t = torch.tensor(a, dtype = torch.float32)
@@ -172,7 +167,7 @@ class PPO:
 if __name__ == "__main__":
     torch.manual_seed(0)
     size = (12, 12)
-    ppo = PPO(size, 'ppo', walls=True, n_iter=10000, batch_size=64)
+    ppo = SimplePPO(size, 'ppo', walls=True, n_iter=10000, batch_size=64)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0
@@ -187,7 +182,7 @@ if __name__ == "__main__":
     for it in range(ppo.n_iter):
         
         args = bs*[ppo]
-        map_results = list(map(PPO.play_one_episode, args))
+        map_results = list(map(SimplePPO.play_one_episode, args))
         ppo.one_training_step(map_results)
         mean_reward, mean_length = ppo.get_stats(map_results)
         if mean_reward > best_reward:
