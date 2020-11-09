@@ -172,6 +172,12 @@ class World:
                 rewards[i] = self.EAT_REWARD
             elif snek.alive:
                 # Didn't eat anything, move reward
+                ### DECOMMENTER pour mettre un bonus de distance au fruit dans le signal de reward ?
+                # food_i, food_j = self.find_food()
+                # n,m = self.size
+                # my_i, my_j = snek.my_blocks[0][0]/n, snek.my_blocks[0][1]/m
+                # distance = (my_i-food_i)**2 + (my_j - food_j)**2 
+                # rewards[i] = self.MOVE_REWARD - distance/10
                 rewards[i] = self.MOVE_REWARD
         # Compute done flags and assign dead rewards
         dones = [not snek.alive for snek in self.sneks]
