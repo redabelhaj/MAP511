@@ -83,7 +83,7 @@ class SingleSnek(gym.Env):
         rewards, dones = self.world.move_snek([action])
         # Update and check hunger
         self.hunger += 1
-        if rewards[0] > 0:
+        if rewards[0] > self.world.MOVE_REWARD:
             self.hunger = 0
         # Check if is a babysnek (dies eating the first piece)
         if rewards[0] > 0 and self.DIE_ON_EAT:

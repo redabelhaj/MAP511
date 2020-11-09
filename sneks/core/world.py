@@ -173,6 +173,7 @@ class World:
             elif snek.alive:
                 # Didn't eat anything, move reward
                 rewards[i] = self.MOVE_REWARD
+                ## TODO : add distance bonus ? 
         # Compute done flags and assign dead rewards
         dones = [not snek.alive for snek in self.sneks]
         rewards = [r if snek.alive else self.DEAD_REWARD for r, snek in zip(rewards, self.sneks)]

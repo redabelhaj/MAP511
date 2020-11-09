@@ -13,49 +13,47 @@ from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
 import time
 
-class ActorCriticNet(torch.nn.Module):
 
-    def __init__(self, size):
-        ## TODO : bigger net ? 
-        super(ActorCriticNet, self).__init__()
-        self.conv1 = torch.nn.Conv2d(3, 3, 2)
-        self.conv2 = torch.nn.Conv2d(3, 2, 2, stride=2)
-        out_size = (size[0]- 1)
-        out_size = int((out_size -2 )/2 +1)
 
-        self.actor = torch.nn.Linear(2*out_size**2, 4)
-        self.critic = torch.nn.Linear(2*out_size**2, 1)
+
+class SimpleACNet(torch.nn.Module):
+    """
+    Actor critic net in the case of simple observation (head pos, fruit pos, current direction ) 
+    observation is a vector of 5 components
+    """
+
+    def __init__(self, hidden_size):
+        super(SimpleACNet,self).__init__()
+        self.layer1 = torch.nn.Linear(5, hidden_size)
+        self.layer2 = torch.nn.Linear(hidden_size, hidden_size)
+        self.actor = torch.nn.Linear(hidden_size, 4)
+        self.critic = torch.nn.Linear(hidden_size, 1)
 
     def forward(self, obs):
-        s = len(obs.size())
-        if s ==2:
-            tens2 = obs.unsqueeze(0).unsqueeze(0)
-        if s == 3:
-            tens2 = obs.unsqueeze(0)
-        if s ==4 :
-            tens2 = obs
-        out = self.conv1(tens2)
+        out = self.layer1(obs)
         out = torch.sigmoid(out)
-        out = self.conv2(out)
-        out = out.flatten(1)
-        logits, values = self.actor(out), self.critic(out)
-        return logits, values
+        out = self.layer2(out)
+        out = torch.sigmoid(out)
+        logits = self.actor(out)
+        value = self.critic(out)
+        return logits, value
 
 
 
-class A2C:
-    def __init__(self, size, name, hunger = 120, hidden_size = 30, walls=True, n_iter = 500, batch_size=32, gamma=.99):
-        self.net = ActorCriticNet(size)
+class SimpleA2C:
+    def __init__(self, name, hunger = 120, hidden_size = 30, walls=True, n_iter = 500, batch_size=32, gamma=.99):
+        self.net = SimpleACNet(hidden_size)
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size, dynamic_step_limit=hunger, add_walls=walls, obs_type="rgb")
+        self.env = SingleSnek(size = size, dynamic_step_limit=hunger, add_walls=walls, obs_type='simplest')
+        self.net = SimpleACNet(hidden_size)
         
         self.gamma = gamma
         self.optimizer = torch.optim.Adam(self.net.parameters())
 
     def get_action(self, state):
-        tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
+        tens = torch.tensor(state, dtype = torch.float32)
         logits, _ = self.net(tens)
         probs = torch.softmax(logits, dim=-1)
         probs = probs.squeeze()
@@ -71,7 +69,7 @@ class A2C:
         while not(done):
             new_state, reward, done, _ = self.env.step(action)
             a_t = torch.tensor([action], dtype = torch.int64)
-            s_t = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
+            s_t = torch.tensor(state, dtype = torch.float32)
             sts.append(s_t)
             acts.append(a_t)
             rews.append(reward)
@@ -97,7 +95,6 @@ class A2C:
             for _,_,g in transitions:
                 list_rewards.append(g)
         gt_tens = torch.tensor(list_rewards, dtype = torch.float32)
-        ## uncomment to normalize rewards on the batch ? 
         # mean, std = torch.mean(gt_tens),torch.std(gt_tens)
         # gt_tens = (gt_tens-mean)/(std + 1e-8)
 
@@ -145,23 +142,23 @@ if __name__ == "__main__":
     mp.set_start_method('spawn')
     torch.manual_seed(0)
     size = (12, 12)
-    a2c = A2C(size, 'a2c',hunger = 30, walls=True, n_iter=500, batch_size=64, gamma=.99)
+    a2c = SimpleA2C( 'simple-a2c',hunger = 30,walls=True, n_iter=500, batch_size=64, gamma=.99)
     bs = a2c.batch_size
     best_reward = -1
     best_length = 0
 
     # a2c.net.load_state_dict(torch.load(a2c.name + '_state_dict.txt'))
-    with open("ep_rewards_"+a2c.name+".txt","r+") as f:
-            f.truncate(0)
-    with open("ep_lengths_"+a2c.name+".txt","r+") as f:
-            f.truncate(0)
-    with open("loss_critic_"+a2c.name+".txt","r+") as f:
-            f.truncate(0)
+    # with open("ep_rewards_"+a2c.name+".txt","r+") as f:
+    #         f.truncate(0)
+    # with open("ep_lengths_"+a2c.name+".txt","r+") as f:
+    #         f.truncate(0)
+    # with open("loss_critic_"+a2c.name+".txt","r+") as f:
+    #         f.truncate(0)
     debut = time.time()
 
     for it in range(a2c.n_iter):
         args = bs*[a2c]
-        map_results = list(map(A2C.play_one_episode, args))
+        map_results = list(map(SimpleA2C.play_one_episode, args))
         a2c.one_training_step(map_results)
         mean_reward, mean_length = a2c.get_stats(map_results)
         if mean_reward > best_reward:
