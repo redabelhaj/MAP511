@@ -68,11 +68,12 @@ class SimpleA2C:
         sts, acts, rews = [],[], [] 
         while not(done):
             new_state, reward, done, _ = self.env.step(action)
+            true_rew, _ = reward
             a_t = torch.tensor([action], dtype = torch.int64)
             s_t = torch.tensor(state, dtype = torch.float32)
             sts.append(s_t)
             acts.append(a_t)
-            rews.append(reward)
+            rews.append(true_rew)
             state = new_state
             action =self.get_action(state)
         
@@ -132,7 +133,7 @@ class SimpleA2C:
             total_loss.backward()
             self.optimizer.step()
 
-        with open("loss_critic_"+self.name+".txt","a") as f:
+        with open("plots/text_files/loss_critic_"+self.name+".txt","a") as f:
                 f.write(str(round(tot_loss_critic, 3))+ '\n')
         
 
@@ -142,18 +143,18 @@ if __name__ == "__main__":
     mp.set_start_method('spawn')
     torch.manual_seed(0)
     size = (12, 12)
-    a2c = SimpleA2C( 'simple-a2c',hunger = 30,walls=True, n_iter=500, batch_size=64, gamma=.99)
+    a2c = SimpleA2C( 'debug_simple-a2c',hunger = 30,walls=True, n_iter=500, batch_size=64, gamma=.99)
     bs = a2c.batch_size
     best_reward = -1
     best_length = 0
 
-    # a2c.net.load_state_dict(torch.load(a2c.name + '_state_dict.txt'))
-    # with open("ep_rewards_"+a2c.name+".txt","r+") as f:
-    #         f.truncate(0)
-    # with open("ep_lengths_"+a2c.name+".txt","r+") as f:
-    #         f.truncate(0)
-    # with open("loss_critic_"+a2c.name+".txt","r+") as f:
-    #         f.truncate(0)
+    a2c.net.load_state_dict(torch.load('saved_models/' +a2c.name + '_state_dict.txt'))
+    with open("plots/text_files/ep_rewards_"+a2c.name+".txt","r+") as f:
+            f.truncate(0)
+    with open("plots/text_files/ep_lengths_"+a2c.name+".txt","r+") as f:
+            f.truncate(0)
+    with open("plots/text_files/loss_critic_"+a2c.name+".txt","r+") as f:
+            f.truncate(0)
     debut = time.time()
 
     for it in range(a2c.n_iter):
@@ -164,14 +165,14 @@ if __name__ == "__main__":
         if mean_reward > best_reward:
             print('\n', "********* new best reward ! *********** ", round(mean_reward, 3), '\n')
             best_reward = mean_reward
-            torch.save(a2c.net.state_dict(), a2c.name + '_state_dict.txt')
+            torch.save(a2c.net.state_dict(), 'saved_models/' +a2c.name + '_state_dict.txt')
         if mean_length > best_length:
             print('\n', "********* new best length ! *********** ", round(mean_length, 3), '\n')
             best_length = mean_length
-            torch.save(a2c.net.state_dict(), a2c.name + '_state_dict.txt')
+            torch.save(a2c.net.state_dict(), 'saved_models/' +a2c.name + '_state_dict.txt')
 
-        with open("ep_rewards_"+a2c.name+".txt","a") as f:
+        with open("plots/text_files/ep_rewards_"+a2c.name+".txt","a") as f:
             f.write(str(round(mean_reward, 3))+ '\n')
-        with open("ep_lengths_"+a2c.name+".txt","a") as f:
+        with open("plots/text_files/ep_lengths_"+a2c.name+".txt","a") as f:
             f.write(str(round(mean_length, 3))+ '\n')
         print('iteration : ', it, 'reward : ', round(mean_reward, 3),'length : ', round(mean_length, 3),'temps : ', round(time.time()-debut, 3), '\n')

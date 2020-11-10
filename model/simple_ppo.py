@@ -132,7 +132,7 @@ class SimplePPO:
         optimizer = torch.optim.Adam(self.net.parameters())
         n_epochs = self.n_epochs
 
-        for i in range(n_epochs):
+        for _ in range(n_epochs):
             running_loss = 0
             for s,c,p,r in dataloader:
                 optimizer.zero_grad()
@@ -168,15 +168,15 @@ class SimplePPO:
 if __name__ == "__main__":
     torch.manual_seed(0)
     size = (12, 12)
-    ppo = SimplePPO(size, 'ppo_debug', walls=True, n_iter=10000, batch_size=64)
+    ppo = SimplePPO(size, 'ppo_debug', walls=True, n_iter=10000, batch_size=12)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0
 
-    ppo.net.load_state_dict(torch.load(ppo.name + '_state_dict.txt'))
-    with open("ep_rewards_"+ppo.name+".txt","r+") as f:
+    ppo.net.load_state_dict(torch.load('saved_models/' + ppo.name + '_state_dict.txt'))
+    with open("plots/text_files/ep_rewards_"+ppo.name+".txt","r+") as f:
             f.truncate(0)
-    with open("ep_lengths_"+ppo.name+".txt","r+") as f:
+    with open("plots/text_files/ep_lengths_"+ppo.name+".txt","r+") as f:
             f.truncate(0)
     debut = time.time()
     
@@ -189,14 +189,14 @@ if __name__ == "__main__":
         if mean_reward > best_reward:
             print('\n', "********* new best reward ! *********** ", round(mean_reward, 3), '\n')
             best_reward = mean_reward
-            torch.save(ppo.net.state_dict(), ppo.name + '_state_dict.txt')
+            torch.save(ppo.net.state_dict(),'saved_models/' + ppo.name + '_state_dict.txt')
         if mean_length > best_length:
             print('\n', "********* new best length ! *********** ", round(mean_length, 3), '\n')
             best_length = mean_length
-            torch.save(ppo.net.state_dict(), ppo.name + '_state_dict.txt')
+            torch.save(ppo.net.state_dict(), 'saved_models/' + ppo.name + '_state_dict.txt')
 
-        with open("ep_rewards_"+ppo.name+".txt","a") as f:
+        with open("plots/text_files/ep_rewards_"+ppo.name+".txt","a") as f:
             f.write(str(round(mean_reward, 3))+ '\n')
-        with open("ep_lengths_"+ppo.name+".txt","a") as f:
+        with open("plots/text_files/ep_lengths_"+ppo.name+".txt","a") as f:
             f.write(str(round(mean_length, 3))+ '\n')
         print('iteration : ', it, 'reward : ', round(mean_reward, 3),'length : ', round(mean_length, 3),'temps : ', round(time.time()-debut, 3), '\n')
