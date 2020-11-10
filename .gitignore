@@ -1,1 +1,8 @@
-.DS_Store
+*.DS_Store
+#pycache
+*.pyc
+# images
+*.png
+*.txt
+tests/__pycache__
+sneks/core/__pycache__/*.pyc
