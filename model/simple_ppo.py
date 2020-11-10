@@ -71,10 +71,11 @@ class SimplePPO:
             a_t = torch.tensor(a, dtype = torch.float32)
             p_t = torch.tensor([prob], dtype = torch.float32)
 
+            true_rew, _ = reward
             sts.append(s_t)
             ats.append(a_t)
             pts.append(p_t)
-            rts.append(reward)
+            rts.append(true_rew)
 
             obs = new_obs
             action, prob = self.get_action_prob(obs)
@@ -167,7 +168,7 @@ class SimplePPO:
 if __name__ == "__main__":
     torch.manual_seed(0)
     size = (12, 12)
-    ppo = SimplePPO(size, 'ppo', walls=True, n_iter=10000, batch_size=64)
+    ppo = SimplePPO(size, 'ppo_debug', walls=True, n_iter=10000, batch_size=64)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0

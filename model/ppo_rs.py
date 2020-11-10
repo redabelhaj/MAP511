@@ -40,7 +40,7 @@ class ActorCriticNet(torch.nn.Module):
         logits, values = self.actor(out), self.critic(out)
         return logits, values
 
-class PPO:
+class PPORS:
     def __init__(self, size,name, hunger = 120, walls = True,n_iter = 500, batch_size = 32,dist_bonus = .1,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2):
         self.net = ActorCriticNet(size)
         self.name = name
@@ -177,7 +177,7 @@ class PPO:
 if __name__ == "__main__":
     torch.manual_seed(0)
     size = (12, 12)
-    ppo = PPO(size, 'ppo_img_hunger10_newrew', hunger=10, n_iter=10000, batch_size=32)
+    ppo = PPORS(size, 'ppo_img_hunger10_newrew', hunger=10, n_iter=10000, batch_size=32)
     bs = ppo.batch_size
     best_reward = -3
     best_length = 0
@@ -192,7 +192,7 @@ if __name__ == "__main__":
     for it in range(ppo.n_iter):
         
         args = bs*[ppo]
-        map_results = list(map(PPO.play_one_episode, args))
+        map_results = list(map(PPORS.play_one_episode, args))
         ppo.one_training_step(map_results)
         mean_reward, mean_length = ppo.get_stats(map_results)
         if mean_reward > best_reward:
