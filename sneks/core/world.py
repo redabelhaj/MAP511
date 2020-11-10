@@ -137,7 +137,7 @@ class World:
     # Move the selected snek
     # Returns reward and done flag
     def move_snek(self, actions):
-        rewards = [0] * len(self.sneks)
+        rewards = [(0, 1)] * len(self.sneks)
         dones = []
         new_food_needed = 0 #Will be used for the food update
         for i, (snek, action) in enumerate(zip(self.sneks, actions)):
@@ -169,20 +169,20 @@ class World:
                 snek.my_blocks.append(old_snek_tail)
                 # Request to place new food. New food creation cannot be called here directly, need to update all sneks before
                 new_food_needed = new_food_needed + 1
-                rewards[i] = self.EAT_REWARD
+                rewards[i] = (self.EAT_REWARD,0)
             elif snek.alive:
                 # Didn't eat anything, move reward
                 ### DECOMMENTER pour mettre un bonus de distance au fruit dans le signal de reward ?
-                # food_i, food_j = self.find_food()
-                # n,m = self.size
-                # my_i, my_j = snek.my_blocks[0][0]/n, snek.my_blocks[0][1]/m
-                # distance = (my_i-food_i)**2 + (my_j - food_j)**2 
-                # rewards[i] = self.MOVE_REWARD - distance/10
-                rewards[i] = self.MOVE_REWARD
+                food_i, food_j = self.find_food()
+                n,m = self.size
+                my_i, my_j = snek.my_blocks[0][0]/n, snek.my_blocks[0][1]/m
+                distance = (my_i-food_i)**2 + (my_j - food_j)**2 
+                rewards[i] = (self.MOVE_REWARD,distance)
         # Compute done flags and assign dead rewards
         dones = [not snek.alive for snek in self.sneks]
-        rewards = [r if snek.alive else self.DEAD_REWARD for r, snek in zip(rewards, self.sneks)]
+        rewards = [r if snek.alive else (self.DEAD_REWARD, 1) for r, snek in zip(rewards, self.sneks)]
 		#Adding new food.
         if new_food_needed > 0:
             self.place_food(n_food = new_food_needed)
+        
         return rewards, dones

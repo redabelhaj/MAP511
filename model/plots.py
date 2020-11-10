@@ -62,6 +62,7 @@ plot("ep_rewards_ppo.txt", label = 'ppo - few features')
 plot("ep_rewards_ppo_img_hunger30.txt", label = 'ppo - raw image - hunger = 30')
 plot("ep_rewards_ppo_img_hunger30_bignet.txt", label = 'ppo - raw image - hunger = 30 - bigger net')
 plot("ep_rewards_ppo_img_hunger30_bignet_relu.txt", label = 'ppo - raw image - hunger = 30 - bigger net - relu')
+plot("ep_rewards_ppo_img_hunger10_newrew.txt", label = 'hunger = 10 - new reward ')
 
 plt.ylabel("rewards")
 plt.xlabel("# episode")
