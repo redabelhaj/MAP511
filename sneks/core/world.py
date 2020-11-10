@@ -102,8 +102,17 @@ class World:
             self.world[choosen_position[0], choosen_position[1]] = self.FOOD
             # Remove the current choice for next steps
             available_positions.remove(choosen_position)
+            
+    def find_food(self):
+        n,m = self.size
+        for i in range(n):
+            for j in range(m):
+                if self.world[i,j] == self.FOOD:
+                    return (i/n,j/m)
+        return (-1,-1) # should not happen
 
-    def get_observation(self):
+
+    def get_observation(self, simple = False):
         obs = self.world.copy()
         # Draw snek over the world
         for snek in self.get_alive_sneks():
@@ -111,7 +120,19 @@ class World:
                 obs[block[0], block[1]] = snek.snek_id
             # Highlight head
             obs[snek.my_blocks[0][0], snek.my_blocks[0][1]] = snek.snek_id + 1
+        if simple:
+            n,m = self.size
+            obs = np.zeros(5)
+            for snek in self.get_alive_sneks():
+                obs[0] = snek.my_blocks[0][0]/n
+                obs[1] = snek.my_blocks[0][1]/m
+                obs[4] = snek.current_direction_index
+            i,j = self.find_food()
+            obs[2] = i
+            obs[3] = j
+            
         return obs
+
 
     # Move the selected snek
     # Returns reward and done flag
@@ -151,6 +172,12 @@ class World:
                 rewards[i] = self.EAT_REWARD
             elif snek.alive:
                 # Didn't eat anything, move reward
+                ### DECOMMENTER pour mettre un bonus de distance au fruit dans le signal de reward ?
+                # food_i, food_j = self.find_food()
+                # n,m = self.size
+                # my_i, my_j = snek.my_blocks[0][0]/n, snek.my_blocks[0][1]/m
+                # distance = (my_i-food_i)**2 + (my_j - food_j)**2 
+                # rewards[i] = self.MOVE_REWARD - distance/10
                 rewards[i] = self.MOVE_REWARD
         # Compute done flags and assign dead rewards
         dones = [not snek.alive for snek in self.sneks]
