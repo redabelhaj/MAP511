@@ -179,6 +179,7 @@ class World:
                 # distance = (my_i-food_i)**2 + (my_j - food_j)**2 
                 # rewards[i] = self.MOVE_REWARD - distance/10
                 rewards[i] = self.MOVE_REWARD
+                ## TODO : add distance bonus ? 
         # Compute done flags and assign dead rewards
         dones = [not snek.alive for snek in self.sneks]
         rewards = [r if snek.alive else self.DEAD_REWARD for r, snek in zip(rewards, self.sneks)]
