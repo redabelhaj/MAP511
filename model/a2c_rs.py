@@ -43,14 +43,14 @@ class ActorCriticNet(torch.nn.Module):
 
 
 
-class A2C:
-    def __init__(self, size, name, hunger = 120, hidden_size = 30, walls=True, n_iter = 500, batch_size=32, gamma=.99):
+class A2C_RS:
+    def __init__(self, size, name, hunger = 120, hidden_size = 30, walls=True, n_iter = 500, batch_size=32,dist_bonus = .1, gamma=.99):
         self.net = ActorCriticNet(size)
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
         self.env = SingleSnek(size = size, dynamic_step_limit=hunger, add_walls=walls, obs_type="rgb")
-        
+        self.dist_bonus = dist_bonus
         self.gamma = gamma
         self.optimizer = torch.optim.Adam(self.net.parameters())
 
@@ -68,15 +68,18 @@ class A2C:
         action = self.get_action(state)
         done = False
         sts, acts, rews = [],[], [] 
+        true_rewards = []
         while not(done):
             new_state, reward, done, _ = self.env.step(action)
 
-            true_rew, _ = reward
+            true_rew, dist = reward
+            newrew = true_rew - self.dist_bonus*dist
             a_t = torch.tensor([action], dtype = torch.int64)
             s_t = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
             sts.append(s_t)
             acts.append(a_t)
-            rews.append(true_rew)
+            rews.append(newrew)
+            true_rewards.append(true_rew)
             state = new_state
             action =self.get_action(state)
         
@@ -87,7 +90,8 @@ class A2C:
             rewards = torch.tensor(rews[i:], dtype = torch.float32)
             g = torch.dot(gammas,rewards)
             s_t, a_t = sts[i], acts[i]
-            transitions.append((s_t, a_t, g))
+            tr = true_rewards[i]
+            transitions.append((s_t, a_t, g, tr))
 
         return transitions
     
@@ -96,14 +100,14 @@ class A2C:
         list_rewards = []
         for transitions in map_results:
             full_list += transitions
-            for _,_,g in transitions:
+            for _,_,g,_ in transitions:
                 list_rewards.append(g)
         gt_tens = torch.tensor(list_rewards, dtype = torch.float32)
         ## uncomment to normalize rewards on the batch ? 
         # mean, std = torch.mean(gt_tens),torch.std(gt_tens)
         # gt_tens = (gt_tens-mean)/(std + 1e-8)
 
-        final_list  = [(s,a,gt_tens[i]) for i,(s,a,_) in enumerate(full_list) ]
+        final_list  = [(s,a,gt_tens[i]) for i,(s,a,_,_) in enumerate(full_list) ]
         return final_list
         
 
@@ -113,8 +117,8 @@ class A2C:
         for i in range(n_batch):
             transitions = map_results[i]
             len_ep.append(len(transitions))
-            gts = [ g.item() for _,_,g in transitions]
-            r = (1-self.gamma)*sum(gts) + self.gamma*gts[0]
+            gts = [ tr_t for _,_,_,tr_t in transitions]
+            r = sum(gts)
             reward_ep.append(r)
     
         return sum(reward_ep)/n_batch, sum(len_ep)/n_batch
@@ -147,7 +151,7 @@ if __name__ == "__main__":
     mp.set_start_method('spawn')
     torch.manual_seed(0)
     size = (12, 12)
-    a2c = A2C(size, 'a2c_debug',hunger = 30, walls=True, n_iter=500, batch_size=64, gamma=.99)
+    a2c = A2C_RS(size, 'a2c_debug',hunger = 30, walls=True, n_iter=500, batch_size=64, gamma=.99)
     bs = a2c.batch_size
     best_reward = -1
     best_length = 0
@@ -163,7 +167,7 @@ if __name__ == "__main__":
 
     for it in range(a2c.n_iter):
         args = bs*[a2c]
-        map_results = list(map(A2C.play_one_episode, args))
+        map_results = list(map(A2C_RS.play_one_episode, args))
         a2c.one_training_step(map_results)
         mean_reward, mean_length = a2c.get_stats(map_results)
         if mean_reward > best_reward:

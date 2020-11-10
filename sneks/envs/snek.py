@@ -77,9 +77,12 @@ class SingleSnek(gym.Env):
         self.current_step += 1
         if (self.current_step >= self.STEP_LIMIT) or (self.hunger > self.DYNAMIC_STEP_LIMIT):
             self.alive = False
-            return self._get_state(), 0, True, {}
+            return self._get_state(), (0,-1), True, {}
         # Perform the action
-        rewards, dones = self.world.move_snek([action])
+        rewards_dist, dones = self.world.move_snek([action])
+        
+        rewards = [r[0] for r in rewards_dist]
+        
         # Update and check hunger
         self.hunger += 1
         if rewards[0] > self.world.MOVE_REWARD:
@@ -90,7 +93,7 @@ class SingleSnek(gym.Env):
         # Disable interactions if snek has died
         if dones[0]:
             self.alive = False
-        return self._get_state(), rewards[0], dones[0], {}
+        return self._get_state(), rewards_dist[0], dones[0], {}
 
     def reset(self):
         # Reset step counters
