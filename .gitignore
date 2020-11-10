@@ -6,5 +6,3 @@
 *.txt
 tests/__pycache__
 sneks/core/__pycache__/*.pyc
-tests/ep_lengths
-tests/ep_rewards
