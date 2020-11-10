@@ -20,7 +20,11 @@ def running_mean(batch, rew, N=1):
     batch2 = np.linspace(0, m, num = s)
     return batch2, running_mean
 
+<<<<<<< HEAD
 def plot(path, label, N=20):
+=======
+def plot(path, label, N=50):
+>>>>>>> policy_gradients
     b,r = load_data(path)
     b, r = running_mean(b,r, N=N)
     plt.plot(b,r, label = label)
@@ -54,7 +58,11 @@ plt.xlabel("# episode")
 plt.ylabel("length")
 plt.legend()
 plt.title("episode length")
+<<<<<<< HEAD
 plt.savefig("episode_lengths_ppo_img")
+=======
+plt.savefig("episode_lengths_a2c.png")
+>>>>>>> policy_gradients
 plt.clf()
 
 plot("ep_rewards_ppo_img.txt", label = 'ppo - raw image')
@@ -68,5 +76,18 @@ plt.ylabel("rewards")
 plt.xlabel("# episode")
 plt.title("sum of rewards during the episode")
 plt.legend()
+<<<<<<< HEAD
 plt.savefig("episode_rewards_ppo_img")
+=======
+plt.savefig("episode_rewards_a2c.png")
+plt.clf()
+
+
+plot("loss_critic_a2c.txt", label = 'critic loss', N=50)
+plt.ylabel("loss")
+plt.xlabel("# episode")
+plt.title("Loss of the critic")
+plt.legend()
+plt.savefig("loss_critic_a2c.png")
+>>>>>>> policy_gradients
 plt.clf()

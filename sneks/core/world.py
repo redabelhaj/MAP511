@@ -102,7 +102,11 @@ class World:
             self.world[choosen_position[0], choosen_position[1]] = self.FOOD
             # Remove the current choice for next steps
             available_positions.remove(choosen_position)
+<<<<<<< HEAD
             
+=======
+    
+>>>>>>> policy_gradients
     def find_food(self):
         n,m = self.size
         for i in range(n):
@@ -112,6 +116,10 @@ class World:
         return (-1,-1) # should not happen
 
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> policy_gradients
     def get_observation(self, simple = False):
         obs = self.world.copy()
         # Draw snek over the world
