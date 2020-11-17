@@ -50,10 +50,12 @@ class Snek:
 
 class World:
 
-    def __init__(self, size, n_sneks=1, n_food=1, add_walls=False):
-        self.DEAD_REWARD = -1.0
+    def __init__(self, size, n_sneks=1, n_food=1, add_walls=False, init_seed = -1):
+        if init_seed >0:
+            random.seed(init_seed)
+        self.DEAD_REWARD = -40.0
         self.MOVE_REWARD = 0.0
-        self.EAT_REWARD = 1.0
+        self.EAT_REWARD = 10.0
         self.FOOD = 64
         self.WALL = 255
         self.DIRECTIONS = Snek.DIRECTIONS
@@ -122,7 +124,7 @@ class World:
             obs[snek.my_blocks[0][0], snek.my_blocks[0][1]] = snek.snek_id + 1
         if simple:
             n,m = self.size
-            obs = np.zeros(5)
+            obs = np.zeros(6)
             for snek in self.get_alive_sneks():
                 obs[0] = snek.my_blocks[0][0]/n
                 obs[1] = snek.my_blocks[0][1]/m
@@ -130,6 +132,7 @@ class World:
             i,j = self.find_food()
             obs[2] = i
             obs[3] = j
+            obs[5] = (i-obs[0])**2 + (j-obs[1])**2
             
         return obs
 

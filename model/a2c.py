@@ -16,15 +16,13 @@ import time
 class ActorCriticNet(torch.nn.Module):
 
     def __init__(self, size):
-        ## TODO : bigger net ? 
         super(ActorCriticNet, self).__init__()
-        self.conv1 = torch.nn.Conv2d(3, 3, 2)
-        self.conv2 = torch.nn.Conv2d(3, 2, 2, stride=2)
-        out_size = (size[0]- 1)
-        out_size = int((out_size -2 )/2 +1)
-
-        self.actor = torch.nn.Linear(2*out_size**2, 4)
-        self.critic = torch.nn.Linear(2*out_size**2, 1)
+        self.conv1 = torch.nn.Conv2d(3, 6, 2, stride = 2)
+        self.conv2 = torch.nn.Conv2d(6, 9, 2)
+        out_size = 1+ int((size[0] -2 )/2)
+        out_size = out_size-1 
+        self.actor = torch.nn.Linear(9*out_size**2, 4)
+        self.critic = torch.nn.Linear(9*out_size**2, 1)
 
     def forward(self, obs):
         s = len(obs.size())
@@ -144,21 +142,22 @@ class A2C:
 
 
 if __name__ == "__main__":
-    mp.set_start_method('spawn')
     torch.manual_seed(0)
     size = (12, 12)
-    a2c = A2C(size, 'a2c_debug',hunger = 30, walls=True, n_iter=500, batch_size=12, gamma=.99)
+    a2c = A2C(size, 'a2c_h15_bs30',hunger = 15, walls=True, n_iter=10000, batch_size=30, gamma=.99)
     bs = a2c.batch_size
     best_reward = -1
     best_length = 0
 
-    a2c.net.load_state_dict(torch.load('saved_models/' +a2c.name + '_state_dict.txt'))
+    # a2c.net.load_state_dict(torch.load('saved_models/' +a2c.name + '_state_dict.txt'))
     with open("plots/text_files/ep_rewards_"+a2c.name+".txt","r+") as f:
             f.truncate(0)
     with open("plots/text_files/ep_lengths_"+a2c.name+".txt","r+") as f:
             f.truncate(0)
     with open("plots/text_files/loss_critic_"+a2c.name+".txt","r+") as f:
             f.truncate(0)
+
+
     debut = time.time()
 
     for it in range(a2c.n_iter):

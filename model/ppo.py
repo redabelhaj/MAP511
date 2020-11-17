@@ -67,6 +67,7 @@ class PPO:
         action, prob = self.get_action_prob(obs)
         done = False
         sts, ats, pts, rts = [], [], [], []
+        old_rew, new_rew = 0,0
         while not(done):
             new_obs, reward, done, _ = self.env.step(action)
             s_t  = torch.tensor(obs, dtype = torch.float32).permute(2,0,1)
@@ -76,10 +77,14 @@ class PPO:
             p_t = torch.tensor([prob], dtype = torch.float32)
             
             true_rew, _ = reward
+            diff_rew = true_rew - old_rew
+            old_rew = true_rew 
+            
             sts.append(s_t)
             ats.append(a_t)
             pts.append(p_t)
-            rts.append(true_rew)
+            # rts.append(true_rew)
+            rts.append(diff_rew) ## differential rewards 
 
             obs = new_obs
             action, prob = self.get_action_prob(obs)
@@ -172,16 +177,16 @@ class PPO:
 if __name__ == "__main__":
     torch.manual_seed(0)
     size = (12, 12)
-    ppo = PPO(size, 'ppo_debug', hunger=30, n_iter=10000, batch_size=10)
+    ppo = PPO(size, 'ppo_h15_bs30_diffrew', hunger=15, n_iter=10000, batch_size=30)
     bs = ppo.batch_size
-    best_reward = -3
+    best_reward = -1
     best_length = 0
 
-    ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
-    with open("plots/text_files/ep_rewards_"+ppo.name+".txt","r+") as f:
-            f.truncate(0)
-    with open("plots/text_files/ep_lengths_"+ppo.name+".txt","r+") as f:
-            f.truncate(0)
+    # ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
+    # with open("plots/text_files/ep_rewards_"+ppo.name+".txt","r+") as f:
+    #         f.truncate(0)
+    # with open("plots/text_files/ep_lengths_"+ppo.name+".txt","r+") as f:
+    #         f.truncate(0)
     debut = time.time()
     
     for it in range(ppo.n_iter):

@@ -31,7 +31,11 @@ class SingleSnek(gym.Env):
         'observation.types': ['raw', 'rgb', 'layered']
     }
 
-    def __init__(self, size=(16,16), step_limit=1000, dynamic_step_limit=120, obs_type='raw', obs_zoom=1, n_food=1, die_on_eat=False, render_zoom=20, add_walls=False):
+    def __init__(self, size=(16,16), step_limit=1000, dynamic_step_limit=120, obs_type='raw', obs_zoom=1, n_food=1, die_on_eat=False, render_zoom=20, add_walls=False, seed = -1):
+        
+        if seed >0:
+            random.seed(seed)
+        self.seed= seed
         # Set size of the game world
         self.SIZE = size
         # Set step limit
@@ -45,7 +49,7 @@ class SingleSnek(gym.Env):
         self.add_walls = add_walls
         # Create world
         self.n_food = n_food
-        self.world = World(self.SIZE, n_sneks=1, n_food=self.n_food, add_walls=self.add_walls)
+        self.world = World(self.SIZE, n_sneks=1, n_food=self.n_food, add_walls=self.add_walls, init_seed=seed)
         # Set observation type and space
         self.obs_type = obs_type
         if self.obs_type == 'raw':
@@ -59,7 +63,7 @@ class SingleSnek(gym.Env):
         elif self.obs_type == 'simplest':
             # simple state space : head pos, fruit pos, current direction
             max_size = max(size[0], size[1])
-            self.observation_space = spaces.Box(low = 0, high = max_size, shape = [5], dtype = np.uint8)
+            self.observation_space = spaces.Box(low = 0, high = max_size, shape = [6], dtype = np.uint8)
 
         else:
             raise(Exception('Unrecognized observation mode.'))
@@ -77,7 +81,7 @@ class SingleSnek(gym.Env):
         self.current_step += 1
         if (self.current_step >= self.STEP_LIMIT) or (self.hunger > self.DYNAMIC_STEP_LIMIT):
             self.alive = False
-            return self._get_state(), (0,-1), True, {}
+            return self._get_state(), (0,1), True, {}
         # Perform the action
         rewards_dist, dones = self.world.move_snek([action])
         
@@ -101,7 +105,7 @@ class SingleSnek(gym.Env):
         self.alive = True
         self.hunger = 0
         # Create world
-        self.world = World(self.SIZE, n_sneks=1, n_food=self.n_food, add_walls=self.add_walls)
+        self.world = World(self.SIZE, n_sneks=1, n_food=self.n_food, add_walls=self.add_walls, init_seed=self.seed)
         return self._get_state()
 
     def seed(self, seed):

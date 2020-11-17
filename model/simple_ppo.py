@@ -22,7 +22,7 @@ class SimpleACNet(torch.nn.Module):
 
     def __init__(self, hidden_size):
         super(SimpleACNet,self).__init__()
-        self.layer1 = torch.nn.Linear(5, hidden_size)
+        self.layer1 = torch.nn.Linear(6, hidden_size)
         self.layer2 = torch.nn.Linear(hidden_size, hidden_size)
         self.actor = torch.nn.Linear(hidden_size, 4)
         self.critic = torch.nn.Linear(hidden_size, 1)
@@ -37,16 +37,17 @@ class SimpleACNet(torch.nn.Module):
         return logits, value
 
 class SimplePPO:
-    def __init__(self, size, name, hidden_size = 30,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2):
+    def __init__(self, size, name,hunger = 15, hidden_size = 30,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2):
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size, add_walls=walls, obs_type='simplest')
+        self.env = SingleSnek(size = size,dynamic_step_limit=hunger, add_walls=walls, obs_type='simplest')
         self.net = SimpleACNet(hidden_size)
         self.n_epochs = n_epochs
         self.eps = eps
         self.gamma = gamma
         self.target_kl = target_kl
+        self.hunger = hunger
     
     def get_action_prob(self, state):
         tens = torch.tensor(state, dtype = torch.float32)
@@ -63,6 +64,8 @@ class SimplePPO:
         action, prob = self.get_action_prob(obs)
         done = False
         sts, ats, pts, rts = [], [], [], []
+        true_rewards = []
+        old_dist = .5
         while not(done):
             new_obs, reward, done, _ = self.env.step(action)
             s_t  = torch.tensor(obs, dtype = torch.float32)
@@ -71,11 +74,20 @@ class SimplePPO:
             a_t = torch.tensor(a, dtype = torch.float32)
             p_t = torch.tensor([prob], dtype = torch.float32)
 
-            true_rew, _ = reward
+            true_rew, dist = reward
+            diff_dist = dist - old_dist
+            old_dist = dist
+
+            if diff_dist<0:
+                close_rew = 1
+            else:
+                close_rew = -2
+            newrew = true_rew + close_rew
             sts.append(s_t)
             ats.append(a_t)
             pts.append(p_t)
-            rts.append(true_rew)
+            rts.append(newrew)
+            true_rewards.append(true_rew)
 
             obs = new_obs
             action, prob = self.get_action_prob(obs)
@@ -85,7 +97,8 @@ class SimplePPO:
             rewards = torch.tensor(rts[i:], dtype = torch.float32)
             g = torch.dot(gammas,rewards)
             s_t, a_t, p_t = sts[i], ats[i], pts[i]
-            transitions.append((s_t, a_t, p_t, g))
+            tr_t = true_rewards[i]
+            transitions.append((s_t, a_t, p_t, g, tr_t))
         return transitions
     
     def get_dataset(self,map_results):
@@ -93,13 +106,13 @@ class SimplePPO:
         list_rewards = []
         for transitions in map_results:
             full_list += transitions
-            for _,_,_,g in transitions:
+            for _,_,_,g, _ in transitions:
                 list_rewards.append(g)
         gt_tens = torch.tensor(list_rewards, dtype = torch.float32)
         # mean, std = torch.mean(gt_tens),torch.std(gt_tens)
         # gt_tens = (gt_tens-mean)/(std + 1e-8)
 
-        final_list  = [(s,a,p,gt_tens[i]) for i,(s,a,p,_) in enumerate(full_list) ]
+        final_list  = [(s,a,p,gt_tens[i]) for i,(s,a,p,_,_) in enumerate(full_list) ]
         return final_list
 
     def get_actor_loss(self, states, actions, probs, r):
@@ -116,10 +129,9 @@ class SimplePPO:
         for i in range(n_batch):
             transitions = map_results[i]
             len_ep.append(len(transitions))
-            gts = [ g.item() for _,_,_,g in transitions]
-            r = (1-self.gamma)*sum(gts) + self.gamma*gts[0]
+            gts = [ tr_t for _,_,_,_,tr_t in transitions]
+            r = sum(gts)
             reward_ep.append(r)
-    
         return sum(reward_ep)/n_batch, sum(len_ep)/n_batch
 
 
@@ -168,16 +180,16 @@ class SimplePPO:
 if __name__ == "__main__":
     torch.manual_seed(0)
     size = (12, 12)
-    ppo = SimplePPO(size, 'ppo_debug', walls=True, n_iter=10000, batch_size=12)
+    ppo = SimplePPO(size, 'simple_ppo_debug', walls=True, n_iter=10000, batch_size=30, hunger=15)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0
 
-    ppo.net.load_state_dict(torch.load('saved_models/' + ppo.name + '_state_dict.txt'))
-    with open("plots/text_files/ep_rewards_"+ppo.name+".txt","r+") as f:
-            f.truncate(0)
-    with open("plots/text_files/ep_lengths_"+ppo.name+".txt","r+") as f:
-            f.truncate(0)
+    # ppo.net.load_state_dict(torch.load('saved_models/' + ppo.name + '_state_dict.txt'))
+    # with open("plots/text_files/ep_rewards_"+ppo.name+".txt","r+") as f:
+    #         f.truncate(0)
+    # with open("plots/text_files/ep_lengths_"+ppo.name+".txt","r+") as f:
+    #         f.truncate(0)
     debut = time.time()
     
     for it in range(ppo.n_iter):

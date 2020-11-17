@@ -29,9 +29,9 @@ size = (12, 12)
 #         sleep(0.08)
 
 
-env = SingleSnek(size = (12,12), dynamic_step_limit=  30,add_walls=True, obs_type="rgb")
+env = SingleSnek(size = (12,12), dynamic_step_limit=  65,add_walls=True, obs_type="rgb",seed=10)
 ppo = PPO(size, 'ppo_img', n_iter=10000, batch_size=64)
-ppo.net.load_state_dict(torch.load("ppo_img_hunger10_newrew_state_dict.txt"))
+ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_fixedseed_state_dict.txt"))
 # ppo_img_hunger10_newrew
 for _ in range(9):
     obs = env.reset()
@@ -44,10 +44,10 @@ for _ in range(9):
         logits, value = ppo.net(tens)
         probs = torch.softmax(logits, dim=-1)
         probs = probs.squeeze().detach().numpy()
-        act = np.argmax(probs)
+        act = np.random.choice(4,p=probs)
         obs, rewards, done, info = env.step(act)
         # totrew+= rewards
         env.render(mode='human')
         sleep(0.08)
-    # print('episode length : ', lenep)
-    # print('episode rewards : ', totrew)
+        # print('episode length : ', lenep)
+        # print('episode rewards : ', totrew)

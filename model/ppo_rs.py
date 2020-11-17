@@ -41,12 +41,13 @@ class ActorCriticNet(torch.nn.Module):
         return logits, values
 
 class PPO_RS:
-    def __init__(self, size,name, hunger = 120, walls = True,n_iter = 500, batch_size = 32,dist_bonus = .1,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2):
+    def __init__(self, size,name, hunger = 120, walls = True,n_iter = 500, batch_size = 32,dist_bonus = .1,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2, seed=-1):
         self.net = ActorCriticNet(size)
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size,dynamic_step_limit=hunger,add_walls=walls, obs_type="rgb")
+
+        self.env = SingleSnek(size = size,dynamic_step_limit=hunger,add_walls=walls, obs_type="rgb",seed = seed)
         self.n_epochs = n_epochs
         self.eps = eps
         self.gamma = gamma
@@ -69,6 +70,7 @@ class PPO_RS:
         done = False
         sts, ats, pts, rts = [], [], [], []
         true_rewards = []
+        old_dist = .5
         while not(done):
             new_obs, reward, done, _ = self.env.step(action)
             s_t  = torch.tensor(obs, dtype = torch.float32).permute(2,0,1)
@@ -78,7 +80,16 @@ class PPO_RS:
             p_t = torch.tensor([prob], dtype = torch.float32)
             
             true_rew, dist = reward
-            newrew = true_rew - self.dist_bonus*dist
+            diff_dist = dist - old_dist
+            old_dist = dist
+            
+            # newrew = true_rew - self.dist_bonus*diff_dist
+            if diff_dist<0:
+                close_rew = 1
+            else:
+                close_rew = -2
+            newrew = true_rew + close_rew
+
 
             sts.append(s_t)
             ats.append(a_t)
@@ -177,9 +188,9 @@ class PPO_RS:
 if __name__ == "__main__":
     torch.manual_seed(0)
     size = (12, 12)
-    ppo = PPO_RS(size, 'ppo_rs_debug', hunger=10, n_iter=10000, batch_size=32)
+    ppo = PPO_RS(size, 'ppo_no_loop_h17_b30_fixedseed', hunger=17, n_iter=10000, batch_size=30,seed = 10)
     bs = ppo.batch_size
-    best_reward = -3
+    best_reward = -1
     best_length = 0
 
     ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))

@@ -16,15 +16,13 @@ import time
 class ActorCriticNet(torch.nn.Module):
 
     def __init__(self, size):
-        ## TODO : bigger net ? 
         super(ActorCriticNet, self).__init__()
-        self.conv1 = torch.nn.Conv2d(3, 3, 2)
-        self.conv2 = torch.nn.Conv2d(3, 2, 2, stride=2)
-        out_size = (size[0]- 1)
-        out_size = int((out_size -2 )/2 +1)
-
-        self.actor = torch.nn.Linear(2*out_size**2, 4)
-        self.critic = torch.nn.Linear(2*out_size**2, 1)
+        self.conv1 = torch.nn.Conv2d(3, 6, 2, stride = 2)
+        self.conv2 = torch.nn.Conv2d(6, 9, 2)
+        out_size = 1+ int((size[0] -2 )/2)
+        out_size = out_size-1 
+        self.actor = torch.nn.Linear(9*out_size**2, 4)
+        self.critic = torch.nn.Linear(9*out_size**2, 1)
 
     def forward(self, obs):
         s = len(obs.size())
