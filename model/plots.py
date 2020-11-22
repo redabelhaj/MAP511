@@ -38,8 +38,19 @@ def plot(path, label, N=20):
 # plot("ep_lengths_ppo_bigboard_newarch.txt", label = 'bigger board , new arch ?')
 # plot("ep_lengths_ppo_new_rewards.txt", label = 'ppo, new rewards ')
 # plot("ep_lengths_ppo_new_rewards_newtest.txt", label = 'ppo, new rewards  - new test')
-plot("ep_lengths_ppo_no_loop_h17_b30.txt", label = 'ppo, new rewards, h17')
+# plot("ep_lengths_ppo_no_loop_h17_b30.txt", label = 'ppo, new rewards, h17')
 plot('ep_lengths_ppo_no_loop_h17_b30_fixedseed.txt', label = 'fixed seed')
+# plot("ep_lengths_ppo_no_loop_h17_b30_fixedseed_v2.txt", label = 'fixed seed - v2')
+# plot("ep_lengths_ppo_no_loop_h17_b30_fixedseed_v3.txt", label = 'fixed seed - v3')
+# plot("ep_lengths_ppo_no_loop_h17_b30_newvers.txt", label = 'fixed?')
+# plot("ep_lengths_ppo_no_loop_h17_b30_beta.txt", label = 'autre essai')
+# plot("ep_lengths_ppo_no_loop_h17_b30_newnet.txt", label = 'new archit')
+# plot("ep_lengths_ppo_no_loop_h17_b30_test.txt", label = '???')
+plot("ep_lengths_ppo_no_loop_h17_b30_test2.txt", label = "test2")
+
+# plot("ep_lengths_ppo_no_loop_h17_b10_fixedseed.txt", label = 'bs = 10')
+# ppo_no_loop_h17_b30_fixedseed_v3
+
 
 # ppo_bigboard_newarch
 plt.xlabel("# batch")
@@ -65,8 +76,20 @@ plt.clf()
 # plot("ep_rewards_ppo_new_rewards.txt", label = 'new rewards')
 # plot("ep_rewards_ppo_new_rewards_newtest.txt", label = 'ppo, new rewards  - new test')
 # plot("ep_rewards_simple_ppo_debug.txt", label = 'debug simple ppo')
-plot("ep_rewards_ppo_no_loop_h17_b30.txt", label = 'ppo, new rewards, h17')
-plot("ep_rewards_ppo_no_loop_h17_b30_fixedseed.txt", label = 'fixed seed')
+# plot("ep_rewards_ppo_no_loop_h17_b30.txt", label = 'ppo, new rewards, h17')
+plot("ep_rewards_ppo_no_loop_h17_b30_fixedseed.txt", label = 'fixed seed, bs = 30')
+plot("ep_rewards_ppo_no_loop_h17_b30_fixedseed_v2.txt", label  = 'fixed seed, v2')
+
+# plot("ep_rewards_ppo_no_loop_h17_b30_fixedseed_v3.txt", label  = 'fixed seed, v3')
+# plot("ep_rewards_ppo_no_loop_h17_b30_newvers.txt", label = 'is it fixed ?')
+# plot("ep_rewards_ppo_no_loop_h17_b30_beta.txt", label = 'autre essai')
+# plot("ep_rewards_ppo_no_loop_h17_b30_newnet.txt", label = 'new archit')
+plot("ep_rewards_ppo_no_loop_h17_b30_test2.txt", label = 'test2')
+
+
+
+
+# plot("ep_rewards_ppo_no_loop_h17_b10_fixedseed.txt", label = 'bs = 10')
 
 # ppo_h15_bs30_diffrew_b3_debug_optim
 # plot("ep_rewards_a2c_h15_bs30.txt", label = 'a2c ')
@@ -79,10 +102,18 @@ plt.savefig("plots/images/episode_rewards")
 plt.clf()
 
 
-# plot("loss_critic_a2c.txt", label = 'critic loss', N=50)
-# plt.ylabel("loss")
-# plt.xlabel("# episode")
-# plt.title("Loss of the critic")
-# plt.legend()
-# plt.savefig("loss_critic_a2c.png")
-# plt.clf()
+plot("loss_critic_ppo_no_loop_h17_b30_test2.txt", label = 'critic loss')
+plt.ylabel("loss")
+plt.xlabel("# episode")
+plt.title("Loss of the critic")
+plt.legend()
+plt.savefig("plots/images/loss_critic")
+plt.clf()
+
+plot("plot_entropy_ppo_no_loop_h17_b30_test2.txt", label = 'entropy')
+plt.ylabel("entropy")
+plt.xlabel("# episode")
+plt.title("Entropy")
+plt.legend()
+plt.savefig("plots/images/entropy")
+plt.clf()

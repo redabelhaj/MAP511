@@ -1,7 +1,7 @@
 import sys
 sys.path.append("/Users/redabelhaj/Desktop/Sneks-master")
 
-from ppo import ActorCriticNet, PPO
+from ppo_rs import ActorCriticNet, PPO_RS
 from simple_ppo import SimpleACNet, SimplePPO
 from sneks.envs.snek import SingleSnek
 import torch
@@ -30,14 +30,22 @@ size = (12, 12)
 
 
 env = SingleSnek(size = (12,12), dynamic_step_limit=  65,add_walls=True, obs_type="rgb",seed=10)
-ppo = PPO(size, 'ppo_img', n_iter=10000, batch_size=64)
-ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_fixedseed_state_dict.txt"))
+ppo = PPO_RS(size, 'ppo_img', n_iter=10000, batch_size=64, seed=14)
+# ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_newvers_state_dict.txt"))
+# ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_beta_state_dict.txt"))
+# ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_fixedseed_v3_state_dict.txt"))
+ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_test2_state_dict.txt"))
+# ppo_no_loop_h17_b30_test2
+# ppo_no_loop_h17_b30_fixedseed_v2
 # ppo_img_hunger10_newrew
-for _ in range(9):
+lens, tots = [],[]
+n_ep = 10
+for i in range(n_ep):
     obs = env.reset()
     done = False
     lenep = 0
     totrew = 0
+    
     while not done:
         lenep+=1
         tens = torch.tensor(obs, dtype = torch.float32).permute(2,0,1)
@@ -46,8 +54,13 @@ for _ in range(9):
         probs = probs.squeeze().detach().numpy()
         act = np.random.choice(4,p=probs)
         obs, rewards, done, info = env.step(act)
-        # totrew+= rewards
+        realrew, _ = rewards
+        totrew+= realrew
         env.render(mode='human')
         sleep(0.08)
-        # print('episode length : ', lenep)
-        # print('episode rewards : ', totrew)
+    # print('episode',i+1, 'length : ', lenep)
+    # print('episode', i+1, 'rewards : ', totrew, '\n')
+    lens.append(lenep)
+    tots.append(totrew)
+print('mean length', sum(lens)/n_ep)
+print('mean reward', sum(tots)/n_ep)

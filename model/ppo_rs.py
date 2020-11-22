@@ -5,7 +5,6 @@ import sneks
 from sneks.envs.snek import SingleSnek
 import numpy as np
 import random as rand
-import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 import tqdm
@@ -41,25 +40,33 @@ class ActorCriticNet(torch.nn.Module):
         return logits, values
 
 class PPO_RS:
-    def __init__(self, size,name, hunger = 120, walls = True,n_iter = 500, batch_size = 32,dist_bonus = .1,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2, seed=-1):
+    def __init__(self, size,name, hunger = 120, walls = True,n_iter = 500, batch_size = 32,dist_bonus = .1,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2, seed=-1, use_entropy = False,beta = 1e-2):
         self.net = ActorCriticNet(size)
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-
         self.env = SingleSnek(size = size,dynamic_step_limit=hunger,add_walls=walls, obs_type="rgb",seed = seed)
         self.n_epochs = n_epochs
         self.eps = eps
         self.gamma = gamma
         self.target_kl = target_kl
         self.dist_bonus = dist_bonus
+        self.beta = beta
+        self.use_entropy=use_entropy
     
     def get_action_prob(self, state):
         tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
         logits, _ = self.net(tens)
         probs = torch.softmax(logits, dim=-1)
         probs = probs.squeeze().detach()
-        act = np.random.choice(4, p = probs.numpy())
+        try:
+            act = np.random.choice(4, p = probs.numpy())
+        except:
+            print(tens)
+            print(logits)
+            print(probs)
+            torch.save(self.net.state_dict(), 'bad training - needs to be debugged')
+            exit()
         return act, probs[act]
 
     def play_one_episode(self):
@@ -89,7 +96,8 @@ class PPO_RS:
             else:
                 close_rew = -2
             newrew = true_rew + close_rew
-
+            # self.env.render() #for debugging
+            # time.sleep(.1)
 
             sts.append(s_t)
             ats.append(a_t)
@@ -117,8 +125,8 @@ class PPO_RS:
             for _,_,_,g, _ in transitions:
                 list_rewards.append(g)
         gt_tens = torch.tensor(list_rewards, dtype = torch.float32)
-        # mean, std = torch.mean(gt_tens),torch.std(gt_tens)
-        # gt_tens = (gt_tens-mean)/(std + 1e-8)
+        mean, std = torch.mean(gt_tens),torch.std(gt_tens)
+        gt_tens = (gt_tens-mean)/(std + 1e-8)
 
         final_list  = [(s,a,p,gt_tens[i]) for i,(s,a,p,_,_) in enumerate(full_list) ]
         return final_list
@@ -160,7 +168,7 @@ class PPO_RS:
                 running_loss+=loss
                 loss.backward()
                 optimizer.step()
-            
+            # print('actor loss : ', running_loss)
             kl=0
             for s,a,p,r in kl_data:
                 logits, _ = self.net(s)
@@ -170,38 +178,69 @@ class PPO_RS:
                 # print(f'Early stopping at step {i} due to reaching max kl {kl}')
                 # print('loss : ', running_loss)
                 break
+
             
-            optimizer.zero_grad()
-            loss_critic=0
-            mse = torch.nn.MSELoss()
-            for s,_,_,r in dataset:
-                r_tens = torch.tensor([r], dtype=torch.float32).squeeze()
-                _,v = self.net(s)
-                v = v.squeeze()
-                
-                loss_critic+= mse(r_tens,v)
-            # print('loss critic : ', float(loss_critic))
-            loss_critic.backward()
+
+        # compute the entropy for stats 
+        entropy = 0
+        optimizer.zero_grad()
+        for s,_,_,_ in  kl_data:
+            logits, _ = self.net(s)
+            probs = torch.softmax(logits, dim=-1)
+            entropy  += -(probs*torch.log(probs)).mean()
+        with open("plots/text_files/plot_entropy_"+str(self.name)+'.txt', "a") as f:
+            f.write(str(round(float(entropy), 3)) + '\n')
+        entropy = self.beta*entropy
+        if self.use_entropy:
+            entropy.backward()
             optimizer.step()
+    
+        
+        optimizer.zero_grad()
+        loss_critic=0
+        mse = torch.nn.MSELoss()
+        for s,_,_,r in kl_data:
+            _,v = self.net(s)
+            v = v.squeeze()
+            loss_critic+= mse(r,v)
+
+        # print('loss critic : ', float(loss_critic))
+        with open("plots/text_files/loss_critic_"+str(self.name)+'.txt', "a") as f:
+            f.write(str(round(float(loss_critic), 3)) + '\n')
+        loss_critic.backward()
+        optimizer.step()
+
+    def truncate_all_files(self):
+        name = self.name
+        with open("plots/text_files/ep_rewards_"+name+".txt","r+") as f:
+            f.truncate(0)
+        with open("plots/text_files/ep_lengths_"+name+".txt","r+") as f:
+                f.truncate(0)
+        with open("plots/text_files/plot_entropy_"+str(name)+'.txt', "r+") as f:
+                f.truncate(0)
+        with open("plots/text_files/loss_critic_"+str(name)+'.txt', "r+") as f:
+                f.truncate(0)
+
+    def write_rew_len(self, rew, length):
+        name = self.name
+        with open("plots/text_files/ep_rewards_"+name+".txt","a") as f:
+            f.write(str(round(rew, 3))+ '\n')
+        with open("plots/text_files/ep_lengths_"+name+".txt","a") as f:
+            f.write(str(round(length, 3))+ '\n')
 
 
 if __name__ == "__main__":
-    torch.manual_seed(0)
     size = (12, 12)
-    ppo = PPO_RS(size, 'ppo_no_loop_h17_b30_fixedseed', hunger=17, n_iter=10000, batch_size=30,seed = 10)
+    ppo = PPO_RS(size, 'ppo_no_loop_h17_b30_test2', hunger=17, n_iter=1000000, batch_size=30,seed = 10, beta=0)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0
 
-    ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
-    # with open("plots/text_files/ep_rewards_"+ppo.name+".txt","r+") as f:
-    #         f.truncate(0)
-    # with open("plots/text_files/ep_lengths_"+ppo.name+".txt","r+") as f:
-    #         f.truncate(0)
+    # ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
+    ppo.truncate_all_files()
     debut = time.time()
     
     for it in range(ppo.n_iter):
-        
         args = bs*[ppo]
         map_results = list(map(PPO_RS.play_one_episode, args))
         ppo.one_training_step(map_results)
@@ -214,9 +253,5 @@ if __name__ == "__main__":
             print('\n', "********* new best length ! *********** ", round(mean_length, 3), '\n')
             best_length = mean_length
             torch.save(ppo.net.state_dict(), 'saved_models/' +ppo.name + '_state_dict.txt')
-
-        with open("plots/text_files/ep_rewards_"+ppo.name+".txt","a") as f:
-            f.write(str(round(mean_reward, 3))+ '\n')
-        with open("plots/text_files/ep_lengths_"+ppo.name+".txt","a") as f:
-            f.write(str(round(mean_length, 3))+ '\n')
+        ppo.write_rew_len(mean_reward,mean_length)
         print('iteration : ', it, 'reward : ', round(mean_reward, 3),'length : ', round(mean_length, 3),'temps : ', round(time.time()-debut, 3), '\n')
