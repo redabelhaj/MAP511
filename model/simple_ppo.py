@@ -10,14 +10,13 @@ import torch
 import torch.nn.functional as F
 import tqdm
 from torch.utils.data import DataLoader
-import torch.multiprocessing as mp
 import time
 
 
 class SimpleACNet(torch.nn.Module):
     """
-    Actor critic net in the case of simple observation (head pos, fruit pos, current direction ) 
-    observation is a vector of 5 components
+    Actor critic net in the case of simple observation (head pos, fruit pos, current direction, distance to the fruit) 
+    observation is a vector of 6 components
     """
 
     def __init__(self, hidden_size):
@@ -40,7 +39,7 @@ class SimplePPO:
     """
     - Class for the PPO algorithm with a simple state space (5 numbers) and possibility to do reward shaping
     """
-    def __init__(self, size, name,hunger = 15, hidden_size = 30,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2,dist_bonus = .2, seed = -1):
+    def __init__(self, size, name,hunger = 15, hidden_size = 30,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2,dist_bonus = .2, seed = -1, use_entropy = False, beta = .2):
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
@@ -52,7 +51,10 @@ class SimplePPO:
         self.target_kl = target_kl
         self.hunger = hunger
         self.dist_bonus = dist_bonus # used in the case of reward shaping with differential distance
-        
+
+        # entropy bonus params 
+        self.use_entropy = use_entropy
+        self.beta = beta
     
     def get_action_prob(self, state):
         """
@@ -145,8 +147,8 @@ class SimplePPO:
             for _,_,_,g, _ in transitions:
                 list_rewards.append(g)
         gt_tens = torch.tensor(list_rewards, dtype = torch.float32)
-        # mean, std = torch.mean(gt_tens),torch.std(gt_tens)
-        # gt_tens = (gt_tens-mean)/(std + 1e-8)
+        mean, std = torch.mean(gt_tens),torch.std(gt_tens)
+        gt_tens = (gt_tens-mean)/(std + 1e-8)
 
         final_list  = [(s,a,p,gt_tens[i]) for i,(s,a,p,_,_) in enumerate(full_list) ]
         return final_list
@@ -179,14 +181,12 @@ class SimplePPO:
             reward_ep.append(r)
         return sum(reward_ep)/n_batch, sum(len_ep)/n_batch
 
-
-
-
     def one_training_step(self, map_results):
         """
         from map_results (list of batch_size lists of transitions given by play_episode)  :
         does one training step of PPO
         """
+        # get training dataset from map_results
         dataset = self.get_dataset(map_results)
         dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=1)
         kl_data = DataLoader(dataset, batch_size= len(dataset), shuffle=True, num_workers=1)
@@ -194,6 +194,7 @@ class SimplePPO:
         n_epochs = self.n_epochs
 
         for _ in range(n_epochs):
+            # compute actor loss and optimize
             running_loss = 0
             for s,c,p,r in dataloader:
                 optimizer.zero_grad()
@@ -201,48 +202,83 @@ class SimplePPO:
                 running_loss+=loss
                 loss.backward()
                 optimizer.step()
-            
+        
+            # check if kl between old and new distribution is too high     
             kl=0
             for s,a,p,r in kl_data:
                 logits, _ = self.net(s)
                 new_probs = torch.unsqueeze(torch.diag(torch.matmul(a, torch.softmax(logits, dim=-1).T)), dim=-1)
                 kl += (torch.log(p) - torch.log(new_probs)).mean().item()
             if kl > 1.5*self.target_kl:
-                # print(f'Early stopping at step {i} due to reaching max kl {kl}')
-                # print('loss : ', running_loss)
+                ## kl is too high : stop training 
                 break
             
-            optimizer.zero_grad()
-            loss_critic=0
-            mse = torch.nn.MSELoss()
-            for s,_,_,r in dataset:
-                r_tens = torch.tensor([r], dtype=torch.float32).squeeze()
-                _,v = self.net(s)
-                v = v.squeeze()
-                
-                loss_critic+= mse(r_tens,v)
-            # print('loss critic : ', float(loss_critic))
-            loss_critic.backward()
+        
+        # compute the entropy for stats / entropy bonus if applicable
+        entropy = 0
+        optimizer.zero_grad()
+        for s,_,_,_ in  kl_data:
+            logits, _ = self.net(s)
+            probs = torch.softmax(logits, dim=-1)
+            entropy  += (probs*torch.log(probs)).mean()
+        with open("plots/text_files/plot_entropy_"+str(self.name)+'.txt', "a") as f:
+            f.write(str(round(float(entropy), 3)) + '\n')
+        entropy = self.beta*entropy
+        if self.use_entropy:
+            entropy.backward()
             optimizer.step()
+        
+        ## compute the critic loss and optimize
+        optimizer.zero_grad()
+        loss_critic=0
+        mse = torch.nn.MSELoss()
+        for s,_,_,r in kl_data:
+            _,v = self.net(s)
+            v = v.squeeze()
+            loss_critic+= mse(r,v)
+        
+        # save critic loss in file
+        with open("plots/text_files/loss_critic_"+str(self.name)+'.txt', "a") as f:
+            f.write(str(round(float(loss_critic), 3)) + '\n')
+        loss_critic.backward()
+        optimizer.step()
 
+    def truncate_all_files(self):
+        name = self.name
+        with open("plots/text_files/ep_rewards_"+name+".txt","r+") as f:
+            f.truncate(0)
+        with open("plots/text_files/ep_lengths_"+name+".txt","r+") as f:
+                f.truncate(0)
+        with open("plots/text_files/plot_entropy_"+str(name)+'.txt', "r+") as f:
+                f.truncate(0)
+        with open("plots/text_files/loss_critic_"+str(name)+'.txt', "r+") as f:
+                f.truncate(0)
 
+    def write_rew_len(self, rew, length):
+        """
+        saves the average reward per episode/ average length per episode
+        """
+        name = self.name
+        with open("plots/text_files/ep_rewards_"+name+".txt","a") as f:
+            f.write(str(round(rew, 3))+ '\n')
+        with open("plots/text_files/ep_lengths_"+name+".txt","a") as f:
+            f.write(str(round(length, 3))+ '\n')
+    
 if __name__ == "__main__":
-    torch.manual_seed(0)
     size = (12, 12)
-    ppo = SimplePPO(size, 'simple_ppo_debug', walls=True, n_iter=10000, batch_size=30, hunger=15, seed=10)
+    ppo = SimplePPO(size, 'simple_ppo_debug',  n_iter=10000, batch_size=30, hunger=17, seed=10, use_entropy=False)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0
 
-    # ppo.net.load_state_dict(torch.load('saved_models/' + ppo.name + '_state_dict.txt'))
-    # with open("plots/text_files/ep_rewards_"+ppo.name+".txt","r+") as f:
-    #         f.truncate(0)
-    # with open("plots/text_files/ep_lengths_"+ppo.name+".txt","r+") as f:
-    #         f.truncate(0)
+    ### uncomment to resume training from a saved model 
+    # ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
+
+    
+    # ppo.truncate_all_files() # uncomment to delete the files corresponding to the name
     debut = time.time()
     
     for it in range(ppo.n_iter):
-        
         args = bs*[ppo]
         map_results = list(map(SimplePPO.play_one_episode, args))
         ppo.one_training_step(map_results)
@@ -255,9 +291,5 @@ if __name__ == "__main__":
             print('\n', "********* new best length ! *********** ", round(mean_length, 3), '\n')
             best_length = mean_length
             torch.save(ppo.net.state_dict(), 'saved_models/' + ppo.name + '_state_dict.txt')
-
-        with open("plots/text_files/ep_rewards_"+ppo.name+".txt","a") as f:
-            f.write(str(round(mean_reward, 3))+ '\n')
-        with open("plots/text_files/ep_lengths_"+ppo.name+".txt","a") as f:
-            f.write(str(round(mean_length, 3))+ '\n')
+        ppo.write_rew_len(mean_reward,mean_length)
         print('iteration : ', it, 'reward : ', round(mean_reward, 3),'length : ', round(mean_length, 3),'temps : ', round(time.time()-debut, 3), '\n')

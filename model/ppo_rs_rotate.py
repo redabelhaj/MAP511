@@ -9,7 +9,6 @@ import torch
 import torch.nn.functional as F
 import tqdm
 from torch.utils.data import DataLoader
-import torch.multiprocessing as mp
 import time
 
 
@@ -51,7 +50,7 @@ class PPO_RS_ROT:
     """
     - Class for the PPO algorithm that enables the possibility to use reward shaping based on the distance 
     from the agent to the fruit. 
-    - The state corresponds to the raw image
+    - The state corresponds to the image rotated such that the snake faces UP
     """
     def __init__(self, size,name, hunger = 120, walls = True,n_iter = 500, batch_size = 32,dist_bonus = .1,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2, seed=-1, use_entropy = False,beta = 1e-2):
         self.net = ActorCriticNet(size)
@@ -324,7 +323,7 @@ class PPO_RS_ROT:
 
 if __name__ == "__main__":
     size = (12, 12)
-    ppo = PPO_RS_ROT(size, 'ppo_rotate_noloops_hunger50', hunger=50, n_iter=3000, batch_size=30,seed = 10, beta=0, use_entropy=False)
+    ppo = PPO_RS_ROT(size, 'ppo_rotate_noloops_hunger50', hunger=50, n_iter=1000, batch_size=30,seed = 10, beta=0, use_entropy=False)
     bs = ppo.batch_size
     best_reward = 30
     best_length = 96
