@@ -10,10 +10,16 @@ import torch
 import torch.nn.functional as F
 import tqdm
 from torch.utils.data import DataLoader
-import torch.multiprocessing as mp
 import time
 
 class ActorCriticNet(torch.nn.Module):
+    """
+    The Actor-Critic neural network class
+    It is a Convolutional Neural Network with two heads : 
+    - the actor returns the scores for the 4 actions (up, right, down, left)
+    - The critic returs the value of the state
+    Notice that the actor does not return a probability distribution : softmax should be used
+    """
 
     def __init__(self, size):
         super(ActorCriticNet, self).__init__()
@@ -42,17 +48,25 @@ class ActorCriticNet(torch.nn.Module):
 
 
 class A2C:
-    def __init__(self, size, name, hunger = 120, hidden_size = 30, walls=True, n_iter = 500, batch_size=32, gamma=.99):
+    """
+    - Class for the A2C algorithm that enables the possibility to use reward shaping based on the distance 
+    from the agent to the fruit. 
+    - The state corresponds to the raw image
+    """
+    def __init__(self, size, name, hunger = 120, hidden_size = 30, walls=True, n_iter = 500, batch_size=32,dist_bonus = .1, gamma=.99, seed=-1):
         self.net = ActorCriticNet(size)
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size, dynamic_step_limit=hunger, add_walls=walls, obs_type="rgb")
-        
+        self.env = SingleSnek(size = size, dynamic_step_limit=hunger, add_walls=walls, obs_type="rgb",seed=seed)
+        self.dist_bonus = dist_bonus # used in the case of reward shaping with differential distance
         self.gamma = gamma
         self.optimizer = torch.optim.Adam(self.net.parameters())
 
     def get_action(self, state):
+        """
+        given the state return the action taken by the actor 
+        """
         tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
         logits, _ = self.net(tens)
         probs = torch.softmax(logits, dim=-1)
@@ -60,21 +74,48 @@ class A2C:
         return np.random.choice(4, p = probs.detach().numpy())
 
     def play_one_episode(self):
+        """
+        play one episode in the environment and return (s,a,g,tr) transitions where : 
+        - s is the state 
+        - a is the action taken
+        - g is the discounted return from state s 
+        - tr is the true reward (useful for stats plots when using reward shaping - not used for training)
+        """
         transitions = []
         new_state = self.env.reset()
         state = new_state
         action = self.get_action(state)
         done = False
         sts, acts, rews = [],[], [] 
+        true_rewards = []
+        old_dist = -1
         while not(done):
             new_state, reward, done, _ = self.env.step(action)
+            true_rew, dist = reward
 
-            true_rew, _ = reward
+            if old_dist==-1: diff_dist=0
+            else: diff_dist = dist - old_dist
+            old_dist = dist
+
+            if diff_dist<0:
+                close_rew = 1
+            else:
+                close_rew = -2
+
+            ## commenter/décommenter selon reward shaping ou pas / quel type de reward shaping 
+             
+            newrew = true_rew + close_rew ### reward shaping avec un bonus de +1 si on s'approche, -2 si on s'éloigne
+            # newrew = true_rew ## pas de reward shaping
+            # newrew = true_rew - self.dist_bonus*diff_dist # reward shaping basé sur un bonus basé sur la différence de distance
+
+
+
             a_t = torch.tensor([action], dtype = torch.int64)
             s_t = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
             sts.append(s_t)
             acts.append(a_t)
-            rews.append(true_rew)
+            rews.append(newrew)
+            true_rewards.append(true_rew)
             state = new_state
             action =self.get_action(state)
         
@@ -85,79 +126,111 @@ class A2C:
             rewards = torch.tensor(rews[i:], dtype = torch.float32)
             g = torch.dot(gammas,rewards)
             s_t, a_t = sts[i], acts[i]
-            transitions.append((s_t, a_t, g))
+            tr = true_rewards[i]
+            transitions.append((s_t, a_t, g, tr))
 
         return transitions
     
     def get_dataset(self, map_results):
+        """
+        from map_results (list of batch_size lists of transitions given by play_episode)  :
+        returns a dataset of transitions (s,a,g) to be used for training 
+        s: state 
+        a: action
+        g: discounted return from state s
+        """
         full_list = []
         list_rewards = []
         for transitions in map_results:
             full_list += transitions
-            for _,_,g in transitions:
+            for _,_,g,_ in transitions:
                 list_rewards.append(g)
         gt_tens = torch.tensor(list_rewards, dtype = torch.float32)
-        ## uncomment to normalize rewards on the batch ? 
-        # mean, std = torch.mean(gt_tens),torch.std(gt_tens)
-        # gt_tens = (gt_tens-mean)/(std + 1e-8)
+        mean, std = torch.mean(gt_tens),torch.std(gt_tens)
+        gt_tens = (gt_tens-mean)/(std + 1e-8)
 
-        final_list  = [(s,a,gt_tens[i]) for i,(s,a,_) in enumerate(full_list) ]
-        return final_list
-        
+        final_list  = [(s,a,gt_tens[i]) for i,(s,a,_,_) in enumerate(full_list) ]
+        return final_list   
 
     def get_stats(self, map_results):
+        """
+        from map_results (list of batch_size lists of transitions given by play_episode)  :
+        returns the average true reward per episode and the average episode length
+        used for monitoring the behaviour of the agent
+        """
         n_batch = len(map_results)
         reward_ep, len_ep  = [], []
         for i in range(n_batch):
             transitions = map_results[i]
             len_ep.append(len(transitions))
-            gts = [ g.item() for _,_,g in transitions]
-            r = (1-self.gamma)*sum(gts) + self.gamma*gts[0]
+            gts = [ tr_t for _,_,_,tr_t in transitions]
+            r = sum(gts)
             reward_ep.append(r)
     
         return sum(reward_ep)/n_batch, sum(len_ep)/n_batch
 
     def one_training_step(self, map_results):
+        """
+        from map_results (list of batch_size lists of transitions given by play_episode)  :
+        does one training step of A2C
+        """
+
+        # get training dataset from map_results
         dataset = self.get_dataset(map_results)
         dataloader = DataLoader(dataset, batch_size=len(dataset), shuffle=True, num_workers=1)
         ce = torch.nn.CrossEntropyLoss(reduction='none')
         mse = torch.nn.MSELoss()
         tot_loss_critic = 0
+        
+        ## compute loss + optimize 
+        self.optimizer.zero_grad()
+        total_loss=0
         for s,a,g in dataloader:
-            self.optimizer.zero_grad()
+            
             out,values = self.net(s)
             values = values.squeeze()
             values2 = values.detach()
             loss_actor = (ce(out, a.squeeze())*(g-values2)).mean()   
             loss_critic = mse(values, g)
             tot_loss_critic+= loss_critic.item()
-            total_loss = .5*loss_actor + .5*loss_critic
-            total_loss.backward()
-            self.optimizer.step()
+            total_loss += .5*loss_actor + .5*loss_critic
+        total_loss.backward()
+        self.optimizer.step()
 
         with open("plots/text_files/loss_critic_"+self.name+".txt","a") as f:
                 f.write(str(round(tot_loss_critic, 3))+ '\n')
         
+    def truncate_all_files(self):
+        name = self.name
+        with open("plots/text_files/ep_rewards_"+name+".txt","r+") as f:
+            f.truncate(0)
+        with open("plots/text_files/ep_lengths_"+name+".txt","r+") as f:
+                f.truncate(0)
+        with open("plots/text_files/loss_critic_"+str(name)+'.txt', "r+") as f:
+                f.truncate(0)
 
+    def write_rew_len(self, rew, length):
+        """
+        saves the average reward per episode/ average length per episode
+        """
+        name = self.name
+        with open("plots/text_files/ep_rewards_"+name+".txt","a") as f:
+            f.write(str(round(rew, 3))+ '\n')
+        with open("plots/text_files/ep_lengths_"+name+".txt","a") as f:
+            f.write(str(round(length, 3))+ '\n')
 
 
 if __name__ == "__main__":
-    torch.manual_seed(0)
     size = (12, 12)
-    a2c = A2C(size, 'a2c_h15_bs30',hunger = 15, walls=True, n_iter=10000, batch_size=30, gamma=.99)
+    a2c = A2C(size, 'debug',hunger = 17, walls=True, n_iter=3, batch_size=3, gamma=.99, seed = 10)
     bs = a2c.batch_size
     best_reward = -1
     best_length = 0
 
-    # a2c.net.load_state_dict(torch.load('saved_models/' +a2c.name + '_state_dict.txt'))
-    with open("plots/text_files/ep_rewards_"+a2c.name+".txt","r+") as f:
-            f.truncate(0)
-    with open("plots/text_files/ep_lengths_"+a2c.name+".txt","r+") as f:
-            f.truncate(0)
-    with open("plots/text_files/loss_critic_"+a2c.name+".txt","r+") as f:
-            f.truncate(0)
+    ### uncomment to resume training from a saved model 
+    # a2c.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
 
-
+    a2c.truncate_all_files() # uncomment to delete the files corresponding to the name
     debut = time.time()
 
     for it in range(a2c.n_iter):
@@ -173,9 +246,5 @@ if __name__ == "__main__":
             print('\n', "********* new best length ! *********** ", round(mean_length, 3), '\n')
             best_length = mean_length
             torch.save(a2c.net.state_dict(), 'saved_models/' +a2c.name + '_state_dict.txt')
-
-        with open("plots/text_files/ep_rewards_"+a2c.name+".txt","a") as f:
-            f.write(str(round(mean_reward, 3))+ '\n')
-        with open("plots/text_files/ep_lengths_"+a2c.name+".txt","a") as f:
-            f.write(str(round(mean_length, 3))+ '\n')
+        a2c.write_rew_len(mean_reward,mean_length)
         print('iteration : ', it, 'reward : ', round(mean_reward, 3),'length : ', round(mean_length, 3),'temps : ', round(time.time()-debut, 3), '\n')

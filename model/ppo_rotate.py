@@ -15,8 +15,9 @@ import time
 class ActorCriticNet(torch.nn.Module):
     """
     The Actor-Critic neural network class
+    This time there are only 3 directions as the snake always faces north
     It is a Convolutional Neural Network with two heads : 
-    - the actor returns the scores for the 4 actions (up, right, down, left)
+    - the actor returns the scores for the 3 actions (up, right, left)
     - The critic returs the value of the state
     Notice that the actor does not return a probability distribution : softmax should be used
     """
@@ -27,7 +28,7 @@ class ActorCriticNet(torch.nn.Module):
         self.conv2 = torch.nn.Conv2d(6, 9, 2)
         out_size = 1+ int((size[0] -2 )/2)
         out_size = out_size-1 
-        self.actor = torch.nn.Linear(9*out_size**2, 4)
+        self.actor = torch.nn.Linear(9*out_size**2, 3)
         self.critic = torch.nn.Linear(9*out_size**2, 1)
 
     def forward(self, obs):
@@ -45,18 +46,18 @@ class ActorCriticNet(torch.nn.Module):
         logits, values = self.actor(out), self.critic(out)
         return logits, values
 
-class PPO_RS:
+class PPO_ROT:
     """
     - Class for the PPO algorithm that enables the possibility to use reward shaping based on the distance 
     from the agent to the fruit. 
-    - The state corresponds to the raw image
+    - The state corresponds to the image rotated such that the snake faces UP
     """
     def __init__(self, size,name, hunger = 120, walls = True,n_iter = 500, batch_size = 32,dist_bonus = .1,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2, seed=-1, use_entropy = False,beta = 1e-2):
         self.net = ActorCriticNet(size)
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size,dynamic_step_limit=hunger,add_walls=walls, obs_type="rgb",seed = seed)
+        self.env = SingleSnek(size = size,dynamic_step_limit=hunger,add_walls=walls, obs_type="rgb-rot",seed = seed)
         self.n_epochs = n_epochs
         self.eps = eps
         self.gamma = gamma
@@ -67,48 +68,84 @@ class PPO_RS:
         self.beta = beta
         self.use_entropy=use_entropy
     
-    def get_action_prob(self, state):
+    
+    @staticmethod
+    def rotate_state(real_state, dire):
         """
-        given the state return the action taken by the actor and the probability of this action
+        from the real board image and snake direction, returs an image where the snake is facing the north
+        """
+        ## direction : 0 = UP ; 1=RIGHT ; 2=DOWN ;  3= LEFT
+        if dire ==0:
+            return real_state
+        elif dire ==1:
+            return real_state.rot90(1, [1,2])
+        elif dire ==2:
+            return real_state.rot90(2, [1,2])
+        else:
+            return real_state.rot90(3, [1,2])
+
+    @staticmethod
+    def get_real_action(action, dire):
+        """
+        from the action taken by the snake (0,1,2) + its  direction in the real game
+        return the actual action taken (in the real game)
+        convention : 0 : left, 1  : right, 2 : up
+        """
+        if dire ==0:
+            if action==0: return 3
+            elif action ==1: return 1 
+            else: return 0
+        elif dire ==1:
+            if action ==0: return 0
+            elif action ==1 : return 2
+            else: return 1
+        elif dire ==2:
+            if action ==0: return 1
+            elif action ==1 : return 3
+            else: return 2
+        elif dire ==3:
+            if action ==0: return 2
+            elif action ==1: return 0 
+            else: return 3
+
+
+    def get_action_prob_state(self, state, direction):
+        """
+        given the state return the action taken by the actor, the probability of this action, and the state used by the network
         """
         tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
-        logits, _ = self.net(tens)
+        net_tens = self.rotate_state(tens, direction)
+        logits, _ = self.net(net_tens)
         probs = torch.softmax(logits, dim=-1)
         probs = probs.squeeze().detach()
-        ## parfois il y a eu des bugs (probabilités = nan) donc j'ai ajouté ça just in case
-        try:
-            act = np.random.choice(4, p = probs.numpy())
-        except:
-            print(tens)
-            print(logits)
-            print(probs)
-            torch.save(self.net.state_dict(), 'bad training - needs to be debugged')
-            exit()
-        return act, probs[act]
+        act = np.random.choice(3, p = probs.numpy())
+        return act, probs[act], net_tens
 
     def play_one_episode(self):
         """
         play one episode in the environment and return (s,a,p,g,tr) transitions where : 
-        - s is the state 
-        - a is the action taken
+        - s is the state (seen by the snake, not the actual board!)
+        - a is the action taken by the snake
         - p is the probability of this action
         - g is the discounted return from state s 
         - tr is the true reward (useful for stats plots when using reward shaping - not used for training)
 
         """
         transitions = []
-        new_obs = self.env.reset()
+        new_obs, dire = self.env.reset()
         obs = new_obs
-        action, prob = self.get_action_prob(obs)
+        net_action, prob, net_tens = self.get_action_prob_state(obs, dire)
         done = False
         sts, ats, pts, rts = [], [], [], []
         true_rewards = []
         old_dist = -1
         while not(done):
-            new_obs, reward, done, _ = self.env.step(action)
-            s_t  = torch.tensor(obs, dtype = torch.float32).permute(2,0,1)
-            a = 4*[0]
-            a[action] =1
+            action = self.get_real_action(net_action,dire)
+            new_tuple_obs, reward, done, _ = self.env.step(action)
+            new_obs, dire = new_tuple_obs
+            s_t  = net_tens
+            a = 3*[0]
+            a[net_action] =1
             a_t = torch.tensor(a, dtype = torch.float32)
             p_t = torch.tensor([prob], dtype = torch.float32)
             
@@ -127,8 +164,8 @@ class PPO_RS:
              
             newrew = true_rew + close_rew ### reward shaping avec un bonus de +1 si on s'approche, -2 si on s'éloigne
             # newrew = true_rew ## pas de reward shaping
-            # newrew = true_rew - self.dist_bonus*diff_dist # reward shaping basé sur un bonus basé sur la différence de distance 
-            
+            # newrew = true_rew - self.dist_bonus*diff_dist # reward shaping basé sur un bonus basé sur la différence de distance
+
             sts.append(s_t)
             ats.append(a_t)
             pts.append(p_t)
@@ -136,7 +173,7 @@ class PPO_RS:
             true_rewards.append(true_rew)
 
             obs = new_obs
-            action, prob = self.get_action_prob(obs)
+            net_action, prob,net_tens = self.get_action_prob_state(obs, dire)
         len_ep = len(rts)
         for i in range(len_ep):
             gammas = torch.tensor([self.gamma**j for j in range(len_ep-i)])
@@ -197,12 +234,14 @@ class PPO_RS:
             reward_ep.append(r)
         return sum(reward_ep)/n_batch, sum(len_ep)/n_batch
 
+
+
+
     def one_training_step(self, map_results):
         """
         from map_results (list of batch_size lists of transitions given by play_episode)  :
         does one training step of PPO
         """
-
         # get training dataset from map_results
         dataset = self.get_dataset(map_results)
         dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=1)
@@ -211,7 +250,6 @@ class PPO_RS:
         n_epochs = self.n_epochs
 
         for i in range(n_epochs):
-
             # compute actor loss and optimize
             running_loss = 0
             for s,c,p,r in dataloader:
@@ -220,7 +258,6 @@ class PPO_RS:
                 running_loss+=loss
                 loss.backward()
                 optimizer.step()
-
             # check if kl between old and new distribution is too high
             kl=0
             for s,a,p,r in kl_data:
@@ -246,7 +283,7 @@ class PPO_RS:
         if self.use_entropy:
             entropy.backward()
             optimizer.step()
-    
+        
         ## compute the critic loss and optimize
         optimizer.zero_grad()
         loss_critic=0
@@ -286,20 +323,21 @@ class PPO_RS:
 
 if __name__ == "__main__":
     size = (12, 12)
-    ppo = PPO_RS(size, 'debug', hunger=17, n_iter=3, batch_size=3,seed = 10, beta=1, use_entropy=True)
+    ppo = PPO_ROT(size, 'debug', hunger=50, n_iter=3, batch_size=3,seed = 10, beta=0.5, use_entropy=True)
     bs = ppo.batch_size
     best_reward = -1
-    best_length = 0
+    best_length =0
+
     ### uncomment to resume training from a saved model 
     # ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
 
     
-    ppo.truncate_all_files() # uncomment to delete the files corresponding to the name
+    # ppo.truncate_all_files() # uncomment to delete the files corresponding to the name
     debut = time.time()
     
     for it in range(ppo.n_iter):
         args = bs*[ppo]
-        map_results = list(map(PPO_RS.play_one_episode, args))
+        map_results = list(map(PPO_ROT.play_one_episode, args))
         ppo.one_training_step(map_results)
         mean_reward, mean_length = ppo.get_stats(map_results)
         if mean_reward > best_reward:
