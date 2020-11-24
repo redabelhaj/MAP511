@@ -114,7 +114,7 @@ class World:
         return (-1,-1) # should not happen
 
 
-    def get_observation(self, simple = False):
+    def get_observation(self, simple = False, add_dir = False):
         obs = self.world.copy()
         # Draw snek over the world
         for snek in self.get_alive_sneks():
@@ -133,6 +133,11 @@ class World:
             obs[2] = i
             obs[3] = j
             obs[5] = (i-obs[0])**2 + (j-obs[1])**2
+        if add_dir:
+            if len(self.get_alive_sneks())==0:
+                return (obs, 0)
+            else:
+                return (obs, self.get_alive_sneks()[0].current_direction_index)
             
         return obs
 
@@ -181,8 +186,10 @@ class World:
                 distance = (my_i-food_i)**2 + (my_j - food_j)**2 
                 rewards[i] = (self.MOVE_REWARD,distance)
         # Compute done flags and assign dead rewards
+        food_i, food_j = self.find_food()
+        n,m = self.size
         dones = [not snek.alive for snek in self.sneks]
-        rewards = [r if snek.alive else (self.DEAD_REWARD, 1) for r, snek in zip(rewards, self.sneks)]
+        rewards = [r if snek.alive else (self.DEAD_REWARD, (snek.my_blocks[0][0]/n-food_i)**2+ (snek.my_blocks[0][1]/m-food_j)**2) for r, snek in zip(rewards, self.sneks)]
 		#Adding new food.
         if new_food_needed > 0:
             self.place_food(n_food = new_food_needed)

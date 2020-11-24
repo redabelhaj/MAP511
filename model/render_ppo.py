@@ -29,19 +29,20 @@ size = (12, 12)
 #         sleep(0.08)
 
 
-env = SingleSnek(size = (12,12), dynamic_step_limit=  65,add_walls=True, obs_type="rgb",seed=10)
-ppo = PPO_RS(size, 'ppo_img', n_iter=10000, batch_size=64, seed=14)
+ppo = PPO_RS(size, 'ppo_img', n_iter=10000, batch_size=64, seed=10, hunger  = 17)
 # ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_newvers_state_dict.txt"))
 # ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_beta_state_dict.txt"))
 # ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_fixedseed_v3_state_dict.txt"))
-ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_test2_state_dict.txt"))
+# ppo.net.load_state_dict(torch.load("saved_models/ppo_no_loop_h17_b30_test2_state_dict.txt"))
+ppo.net.load_state_dict(torch.load("saved_models/ppo_1730_vanilla_state_dict.txt"))
+
 # ppo_no_loop_h17_b30_test2
 # ppo_no_loop_h17_b30_fixedseed_v2
 # ppo_img_hunger10_newrew
 lens, tots = [],[]
 n_ep = 10
 for i in range(n_ep):
-    obs = env.reset()
+    obs = ppo.env.reset()
     done = False
     lenep = 0
     totrew = 0
@@ -53,10 +54,10 @@ for i in range(n_ep):
         probs = torch.softmax(logits, dim=-1)
         probs = probs.squeeze().detach().numpy()
         act = np.random.choice(4,p=probs)
-        obs, rewards, done, info = env.step(act)
+        obs, rewards, done, info = ppo.env.step(act)
         realrew, _ = rewards
         totrew+= realrew
-        env.render(mode='human')
+        ppo.env.render(mode='human')
         sleep(0.08)
     # print('episode',i+1, 'length : ', lenep)
     # print('episode', i+1, 'rewards : ', totrew, '\n')

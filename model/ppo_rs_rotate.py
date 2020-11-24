@@ -21,7 +21,7 @@ class ActorCriticNet(torch.nn.Module):
         self.conv2 = torch.nn.Conv2d(6, 9, 2)
         out_size = 1+ int((size[0] -2 )/2)
         out_size = out_size-1 
-        self.actor = torch.nn.Linear(9*out_size**2, 4)
+        self.actor = torch.nn.Linear(9*out_size**2, 3)
         self.critic = torch.nn.Linear(9*out_size**2, 1)
 
     def forward(self, obs):
@@ -39,13 +39,13 @@ class ActorCriticNet(torch.nn.Module):
         logits, values = self.actor(out), self.critic(out)
         return logits, values
 
-class PPO_RS:
+class PPO_RS_ROT:
     def __init__(self, size,name, hunger = 120, walls = True,n_iter = 500, batch_size = 32,dist_bonus = .1,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2, seed=-1, use_entropy = False,beta = 1e-2):
         self.net = ActorCriticNet(size)
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size,dynamic_step_limit=hunger,add_walls=walls, obs_type="rgb",seed = seed)
+        self.env = SingleSnek(size = size,dynamic_step_limit=hunger,add_walls=walls, obs_type="rgb-rot",seed = seed)
         self.n_epochs = n_epochs
         self.eps = eps
         self.gamma = gamma
@@ -54,52 +54,80 @@ class PPO_RS:
         self.beta = beta
         self.use_entropy=use_entropy
     
-    def get_action_prob(self, state):
+    
+    @staticmethod
+    def rotate_state(real_state, dire):
+        ## but : la direction doit etre vers le haut
+        ## rappel : 0U 1R 2D 3L
+        if dire ==0:
+            return real_state
+        elif dire ==1:
+            return real_state.rot90(1, [1,2])
+        elif dire ==2:
+            return real_state.rot90(2, [1,2])
+        else:
+            return real_state.rot90(3, [1,2])
+
+    @staticmethod
+    def get_real_action(action, dire):
+        if dire ==0:
+            if action==0: return 3
+            elif action ==1: return 1 
+            else: return 0
+        elif dire ==1:
+            if action ==0: return 0
+            elif action ==1 : return 2
+            else: return 1
+        elif dire ==2:
+            if action ==0: return 1
+            elif action ==1 : return 3
+            else: return 2
+        elif dire ==3:
+            if action ==0: return 2
+            elif action ==1: return 0 
+            else: return 3
+
+
+    def get_action_prob_state(self, state, direction):
         tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
-        logits, _ = self.net(tens)
+        net_tens = self.rotate_state(tens, direction)
+        logits, _ = self.net(net_tens)
         probs = torch.softmax(logits, dim=-1)
         probs = probs.squeeze().detach()
-        try:
-            act = np.random.choice(4, p = probs.numpy())
-        except:
-            print(tens)
-            print(logits)
-            print(probs)
-            torch.save(self.net.state_dict(), 'bad training - needs to be debugged')
-            exit()
-        return act, probs[act]
+        act = np.random.choice(3, p = probs.numpy())
+        return act, probs[act], net_tens
 
     def play_one_episode(self):
         transitions = []
-        new_obs = self.env.reset()
+        new_obs, dire = self.env.reset()
         obs = new_obs
-        action, prob = self.get_action_prob(obs)
+        net_action, prob, net_tens = self.get_action_prob_state(obs, dire)
         done = False
         sts, ats, pts, rts = [], [], [], []
         true_rewards = []
-        old_dist = -1
+        old_dist = .5
         while not(done):
-            new_obs, reward, done, _ = self.env.step(action)
-            s_t  = torch.tensor(obs, dtype = torch.float32).permute(2,0,1)
-            a = 4*[0]
-            a[action] =1
+            action = self.get_real_action(net_action,dire)
+            new_tuple_obs, reward, done, _ = self.env.step(action)
+            new_obs, dire = new_tuple_obs
+            s_t  = net_tens
+            a = 3*[0]
+            a[net_action] =1
             a_t = torch.tensor(a, dtype = torch.float32)
             p_t = torch.tensor([prob], dtype = torch.float32)
             
             true_rew, dist = reward
-            if old_dist==-1: diff_dist=0
-            else: diff_dist = dist - old_dist
+            diff_dist = dist - old_dist
             old_dist = dist
-            newrew = true_rew
-            # newrew = true_rew - self.dist_bonus*diff_dist
-            # if diff_dist<0:
-            #     close_rew = 1
-            # else:
-            #     close_rew = -2
-            # newrew = true_rew + close_rew
-            # self.env.render() #for debugging
-            # time.sleep(.1)
+            if diff_dist<0:
+                close_rew = 1
+            elif diff_dist >0:
+                close_rew = -4
+            else:
+                clsoe_rew = 0
+            newrew = true_rew + close_rew
 
+            newrew = true_rew
             sts.append(s_t)
             ats.append(a_t)
             pts.append(p_t)
@@ -107,7 +135,7 @@ class PPO_RS:
             true_rewards.append(true_rew)
 
             obs = new_obs
-            action, prob = self.get_action_prob(obs)
+            net_action, prob,net_tens = self.get_action_prob_state(obs, dire)
         len_ep = len(rts)
         for i in range(len_ep):
             gammas = torch.tensor([self.gamma**j for j in range(len_ep-i)])
@@ -188,7 +216,7 @@ class PPO_RS:
         for s,_,_,_ in  kl_data:
             logits, _ = self.net(s)
             probs = torch.softmax(logits, dim=-1)
-            entropy  += (probs*torch.log(probs)).mean()
+            entropy  += -(probs*torch.log(probs)).mean()
         with open("plots/text_files/plot_entropy_"+str(self.name)+'.txt', "a") as f:
             f.write(str(round(float(entropy), 3)) + '\n')
         entropy = self.beta*entropy
@@ -232,18 +260,18 @@ class PPO_RS:
 
 if __name__ == "__main__":
     size = (12, 12)
-    ppo = PPO_RS(size, 'ppo_1730_vanilla_entropy_1', hunger=17, n_iter=300, batch_size=30,seed = 10, beta=1, use_entropy=True)
+    ppo = PPO_RS_ROT(size, 'ppo_rotate_noloops_hunger50', hunger=50, n_iter=3000, batch_size=30,seed = 10, beta=0, use_entropy=False)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0
 
     # ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
-    ppo.truncate_all_files()
+    # ppo.truncate_all_files()
     debut = time.time()
     
     for it in range(ppo.n_iter):
         args = bs*[ppo]
-        map_results = list(map(PPO_RS.play_one_episode, args))
+        map_results = list(map(PPO_RS_ROT.play_one_episode, args))
         ppo.one_training_step(map_results)
         mean_reward, mean_length = ppo.get_stats(map_results)
         if mean_reward > best_reward:

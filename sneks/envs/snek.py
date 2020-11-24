@@ -54,7 +54,7 @@ class SingleSnek(gym.Env):
         self.obs_type = obs_type
         if self.obs_type == 'raw':
             self.observation_space = spaces.Box(low=0, high=255, shape=(self.SIZE[0]*obs_zoom, self.SIZE[1]*obs_zoom), dtype=np.uint8)
-        elif self.obs_type == 'rgb':
+        elif self.obs_type == 'rgb' or self.obs_type == 'rgb-rot':
             self.observation_space = spaces.Box(low=0, high=255, shape=(self.SIZE[0]*obs_zoom, self.SIZE[1]*obs_zoom, 3), dtype=np.uint8)
             self.RGBify = RGBifier(self.SIZE, zoom_factor = obs_zoom, players_colors={})
         elif self.obs_type == 'layered':
@@ -121,6 +121,10 @@ class SingleSnek(gym.Env):
             return s
         elif self.obs_type == 'simplest':
             return self.world.get_observation(simple = True)
+        elif self.obs_type == 'rgb-rot':
+            state,dire =  self.world.get_observation(add_dir=True)
+            rgb_state = self.RGBify.get_image(state)
+            return (rgb_state,dire)
         else:
             return _state
 
