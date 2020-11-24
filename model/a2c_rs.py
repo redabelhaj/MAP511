@@ -42,12 +42,12 @@ class ActorCriticNet(torch.nn.Module):
 
 
 class A2C_RS:
-    def __init__(self, size, name, hunger = 120, hidden_size = 30, walls=True, n_iter = 500, batch_size=32,dist_bonus = .1, gamma=.99):
+    def __init__(self, size, name, hunger = 120, hidden_size = 30, walls=True, n_iter = 500, batch_size=32,dist_bonus = .1, gamma=.99, seed=-1):
         self.net = ActorCriticNet(size)
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size, dynamic_step_limit=hunger, add_walls=walls, obs_type="rgb")
+        self.env = SingleSnek(size = size, dynamic_step_limit=hunger, add_walls=walls, obs_type="rgb",seed=seed)
         self.dist_bonus = dist_bonus
         self.gamma = gamma
         self.optimizer = torch.optim.Adam(self.net.parameters())
@@ -67,11 +67,28 @@ class A2C_RS:
         done = False
         sts, acts, rews = [],[], [] 
         true_rewards = []
+        old_dist = -1
         while not(done):
             new_state, reward, done, _ = self.env.step(action)
-
             true_rew, dist = reward
-            newrew = true_rew - self.dist_bonus*dist
+
+            if old_dist==-1: diff_dist=0
+            else: diff_dist = dist - old_dist
+            old_dist = dist
+
+            if diff_dist<0:
+                close_rew = 1
+            else:
+                close_rew = -2
+
+            ## commenter/décommenter selon reward shaping ou pas / quel type de reward shaping 
+             
+            newrew = true_rew + close_rew ### reward shaping avec un bonus de +1 si on s'approche, -2 si on s'éloigne
+            # newrew = true_rew ## pas de reward shaping
+            # newrew = true_rew - self.dist_bonus*diff_dist # reward shaping basé sur un bonus basé sur la différence de distance
+
+
+
             a_t = torch.tensor([action], dtype = torch.int64)
             s_t = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
             sts.append(s_t)
@@ -101,9 +118,8 @@ class A2C_RS:
             for _,_,g,_ in transitions:
                 list_rewards.append(g)
         gt_tens = torch.tensor(list_rewards, dtype = torch.float32)
-        ## uncomment to normalize rewards on the batch ? 
-        # mean, std = torch.mean(gt_tens),torch.std(gt_tens)
-        # gt_tens = (gt_tens-mean)/(std + 1e-8)
+        mean, std = torch.mean(gt_tens),torch.std(gt_tens)
+        gt_tens = (gt_tens-mean)/(std + 1e-8)
 
         final_list  = [(s,a,gt_tens[i]) for i,(s,a,_,_) in enumerate(full_list) ]
         return final_list
@@ -146,10 +162,8 @@ class A2C_RS:
 
 
 if __name__ == "__main__":
-    mp.set_start_method('spawn')
-    torch.manual_seed(0)
     size = (12, 12)
-    a2c = A2C_RS(size, 'a2c_debug',hunger = 30, walls=True, n_iter=500, batch_size=12, gamma=.99)
+    a2c = A2C_RS(size, 'a2c_debug',hunger = 17, walls=True, n_iter=500, batch_size=30, gamma=.99, seed = 10)
     bs = a2c.batch_size
     best_reward = -1
     best_length = 0

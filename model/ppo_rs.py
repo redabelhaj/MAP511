@@ -14,6 +14,13 @@ import time
 
 
 class ActorCriticNet(torch.nn.Module):
+    """
+    The Actor-Critic neural network class
+    It is a Convolutional Neural Network with two heads : 
+    - the actor returns the scores for the 4 actions (up, right, down, left)
+    - The critic returs the value of the state
+    Notice that the actor does not return a probability distribution : softmax should be used
+    """
 
     def __init__(self, size):
         super(ActorCriticNet, self).__init__()
@@ -40,6 +47,11 @@ class ActorCriticNet(torch.nn.Module):
         return logits, values
 
 class PPO_RS:
+    """
+    - Class for the PPO algorithm that enables the possibility to use reward shaping based on the distance 
+    from the agent to the fruit. 
+    - The state corresponds to the raw image
+    """
     def __init__(self, size,name, hunger = 120, walls = True,n_iter = 500, batch_size = 32,dist_bonus = .1,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2, seed=-1, use_entropy = False,beta = 1e-2):
         self.net = ActorCriticNet(size)
         self.name = name
@@ -50,15 +62,21 @@ class PPO_RS:
         self.eps = eps
         self.gamma = gamma
         self.target_kl = target_kl
-        self.dist_bonus = dist_bonus
+        self.dist_bonus = dist_bonus # used in the case of reward shaping with differential distance
+
+        # parameters for entropy bonus
         self.beta = beta
         self.use_entropy=use_entropy
     
     def get_action_prob(self, state):
+        """
+        given the state return the action taken by the actor and the probability of this action
+        """
         tens = torch.tensor(state, dtype = torch.float32).permute(2,0,1)
         logits, _ = self.net(tens)
         probs = torch.softmax(logits, dim=-1)
         probs = probs.squeeze().detach()
+        ## parfois il y a eu des bugs (probabilités = nan) donc j'ai ajouté ça just in case
         try:
             act = np.random.choice(4, p = probs.numpy())
         except:
@@ -70,6 +88,15 @@ class PPO_RS:
         return act, probs[act]
 
     def play_one_episode(self):
+        """
+        play one episode in the environment and return (s,a,p,g,tr) transitions where : 
+        - s is the state 
+        - a is the action taken
+        - p is the probability of this action
+        - g is the discounted return from state s 
+        - tr is the true reward (useful for stats plots when using reward shaping - not used for training)
+
+        """
         transitions = []
         new_obs = self.env.reset()
         obs = new_obs
@@ -90,16 +117,19 @@ class PPO_RS:
             if old_dist==-1: diff_dist=0
             else: diff_dist = dist - old_dist
             old_dist = dist
-            newrew = true_rew
-            # newrew = true_rew - self.dist_bonus*diff_dist
-            # if diff_dist<0:
-            #     close_rew = 1
-            # else:
-            #     close_rew = -2
-            # newrew = true_rew + close_rew
-            # self.env.render() #for debugging
-            # time.sleep(.1)
-
+            
+            if diff_dist<0:
+                close_rew = 1
+            elif diff_dist==0:
+                close_rew = 0
+            else:
+                close_rew = -2
+            ## commenter/décommenter selon reward shaping ou pas / quel type de reward shaping 
+             
+            newrew = true_rew + close_rew ### reward shaping avec un bonus de +1 si on s'approche, -2 si on s'éloigne
+            # newrew = true_rew ## pas de reward shaping
+            # newrew = true_rew - self.dist_bonus*diff_dist # reward shaping basé sur un bonus basé sur la différence de distance 
+            
             sts.append(s_t)
             ats.append(a_t)
             pts.append(p_t)
@@ -119,6 +149,14 @@ class PPO_RS:
         return transitions
     
     def get_dataset(self,map_results):
+        """
+        from map_results (list of batch_size lists of transitions given by play_episode)  :
+        returns a dataset of transitions (s,a,p,g) to be used for training 
+        s: state 
+        a: action
+        p: probability of this action
+        g: discounted return from state s
+        """
         full_list = []
         list_rewards = []
         for transitions in map_results:
@@ -133,6 +171,10 @@ class PPO_RS:
         return final_list
 
     def get_actor_loss(self, states, actions, probs, r):
+        """
+        from a tensor of states, a tensor of actions, a tensor of probabilities, a tensor of discounted rewards r 
+        returns the corresponding PPO actor loss  (inspired by PPO-CLIP implementation of OpenAI)
+        """
         logits, vals = self.net(states)
         advs = r.unsqueeze(dim =-1)-vals.detach()
         new_probs = torch.unsqueeze(torch.diag(torch.matmul(actions, torch.softmax(logits, dim=-1).T)), dim=-1)
@@ -141,6 +183,11 @@ class PPO_RS:
         return -torch.min(ratio*advs, clip_advs).mean()
 
     def get_stats(self, map_results):
+        """
+        from map_results (list of batch_size lists of transitions given by play_episode)  :
+        returns the average true reward per episode and the average episode length
+        used for monitoring the behaviour of the agent
+        """
         n_batch = len(map_results)
         reward_ep, len_ep  = [], []
         for i in range(n_batch):
@@ -155,6 +202,12 @@ class PPO_RS:
 
 
     def one_training_step(self, map_results):
+        """
+        from map_results (list of batch_size lists of transitions given by play_episode)  :
+        does one training step of PPO
+        """
+
+        # get training dataset from map_results
         dataset = self.get_dataset(map_results)
         dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=1)
         kl_data = DataLoader(dataset, batch_size= len(dataset), shuffle=True, num_workers=1)
@@ -162,6 +215,8 @@ class PPO_RS:
         n_epochs = self.n_epochs
 
         for i in range(n_epochs):
+
+            # compute actor loss and optimize
             running_loss = 0
             for s,c,p,r in dataloader:
                 optimizer.zero_grad()
@@ -169,20 +224,20 @@ class PPO_RS:
                 running_loss+=loss
                 loss.backward()
                 optimizer.step()
-            # print('actor loss : ', running_loss)
+
+            # check if kl between old and new distribution is too high
             kl=0
             for s,a,p,r in kl_data:
                 logits, _ = self.net(s)
                 new_probs = torch.unsqueeze(torch.diag(torch.matmul(a, torch.softmax(logits, dim=-1).T)), dim=-1)
                 kl += (torch.log(p) - torch.log(new_probs)).mean().item()
             if kl > 1.5*self.target_kl:
-                # print(f'Early stopping at step {i} due to reaching max kl {kl}')
-                # print('loss : ', running_loss)
+                ## kl is too high : stop training 
                 break
 
             
 
-        # compute the entropy for stats 
+        # compute the entropy for stats / entropy bonus if applicable
         entropy = 0
         optimizer.zero_grad()
         for s,_,_,_ in  kl_data:
@@ -196,7 +251,7 @@ class PPO_RS:
             entropy.backward()
             optimizer.step()
     
-        
+        ## compute the critic loss and optimize
         optimizer.zero_grad()
         loss_critic=0
         mse = torch.nn.MSELoss()
@@ -204,8 +259,8 @@ class PPO_RS:
             _,v = self.net(s)
             v = v.squeeze()
             loss_critic+= mse(r,v)
-
-        # print('loss critic : ', float(loss_critic))
+        
+        # save critic loss in file
         with open("plots/text_files/loss_critic_"+str(self.name)+'.txt', "a") as f:
             f.write(str(round(float(loss_critic), 3)) + '\n')
         loss_critic.backward()
@@ -223,6 +278,9 @@ class PPO_RS:
                 f.truncate(0)
 
     def write_rew_len(self, rew, length):
+        """
+        saves the average reward per episode/ average length per episode
+        """
         name = self.name
         with open("plots/text_files/ep_rewards_"+name+".txt","a") as f:
             f.write(str(round(rew, 3))+ '\n')
@@ -236,9 +294,11 @@ if __name__ == "__main__":
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0
-
+    ### uncomment to resume training from a saved model 
     # ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
-    ppo.truncate_all_files()
+
+    
+    ppo.truncate_all_files() # uncomment to delete the files corresponding to the name
     debut = time.time()
     
     for it in range(ppo.n_iter):

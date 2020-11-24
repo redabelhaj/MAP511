@@ -37,19 +37,27 @@ class SimpleACNet(torch.nn.Module):
         return logits, value
 
 class SimplePPO:
-    def __init__(self, size, name,hunger = 15, hidden_size = 30,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2):
+    """
+    - Class for the PPO algorithm with a simple state space (5 numbers) and possibility to do reward shaping
+    """
+    def __init__(self, size, name,hunger = 15, hidden_size = 30,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2,dist_bonus = .2, seed = -1):
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
-        self.env = SingleSnek(size = size,dynamic_step_limit=hunger, add_walls=walls, obs_type='simplest')
+        self.env = SingleSnek(size = size,dynamic_step_limit=hunger, add_walls=walls, obs_type='simplest', seed = seed)
         self.net = SimpleACNet(hidden_size)
         self.n_epochs = n_epochs
         self.eps = eps
         self.gamma = gamma
         self.target_kl = target_kl
         self.hunger = hunger
+        self.dist_bonus = dist_bonus # used in the case of reward shaping with differential distance
+        
     
     def get_action_prob(self, state):
+        """
+        given the state return the action taken by the actor and the probability of this action
+        """
         tens = torch.tensor(state, dtype = torch.float32)
         logits, _ = self.net(tens)
         probs = torch.softmax(logits, dim=-1)
@@ -58,6 +66,16 @@ class SimplePPO:
         return act, probs[act]
 
     def play_one_episode(self):
+        """
+        play one episode in the environment and return (s,a,p,g,tr) transitions where : 
+        - s is the state 
+        - a is the action taken
+        - p is the probability of this action
+        - g is the discounted return from state s 
+        - tr is the true reward (useful for stats plots when using reward shaping - not used for training)
+
+        """
+
         transitions = []
         new_obs = self.env.reset()
         obs = new_obs
@@ -65,7 +83,7 @@ class SimplePPO:
         done = False
         sts, ats, pts, rts = [], [], [], []
         true_rewards = []
-        old_dist = .5
+        old_dist = -1
         while not(done):
             new_obs, reward, done, _ = self.env.step(action)
             s_t  = torch.tensor(obs, dtype = torch.float32)
@@ -75,14 +93,24 @@ class SimplePPO:
             p_t = torch.tensor([prob], dtype = torch.float32)
 
             true_rew, dist = reward
-            diff_dist = dist - old_dist
+            if old_dist==-1: diff_dist=0
+            else: diff_dist = dist - old_dist
             old_dist = dist
-
+            
             if diff_dist<0:
                 close_rew = 1
+            elif diff_dist==0:
+                close_rew = 0
             else:
                 close_rew = -2
-            newrew = true_rew + close_rew
+            ## commenter/décommenter selon reward shaping ou pas / quel type de reward shaping 
+             
+            newrew = true_rew + close_rew ### reward shaping avec un bonus de +1 si on s'approche, -2 si on s'éloigne
+            # newrew = true_rew ## pas de reward shaping
+            # newrew = true_rew - self.dist_bonus*diff_dist # reward shaping basé sur un bonus basé sur la différence de distance
+
+            
+            
             sts.append(s_t)
             ats.append(a_t)
             pts.append(p_t)
@@ -102,6 +130,14 @@ class SimplePPO:
         return transitions
     
     def get_dataset(self,map_results):
+        """
+        from map_results (list of batch_size lists of transitions given by play_episode)  :
+        returns a dataset of transitions (s,a,p,g) to be used for training 
+        s: state 
+        a: action
+        p: probability of this action
+        g: discounted return from state s
+        """
         full_list = []
         list_rewards = []
         for transitions in map_results:
@@ -116,6 +152,10 @@ class SimplePPO:
         return final_list
 
     def get_actor_loss(self, states, actions, probs, r):
+        """
+        from a tensor of states, a tensor of actions, a tensor of probabilities, a tensor of discounted rewards r 
+        returns the corresponding PPO actor loss  (inspired by PPO-CLIP implementation of OpenAI)
+        """
         logits, vals = self.net(states)
         advs = r.unsqueeze(dim =-1)-vals.detach()
         new_probs = torch.unsqueeze(torch.diag(torch.matmul(actions, torch.softmax(logits, dim=-1).T)), dim=-1)
@@ -124,6 +164,11 @@ class SimplePPO:
         return -torch.min(ratio*advs, clip_advs).mean()
 
     def get_stats(self, map_results):
+        """
+        from map_results (list of batch_size lists of transitions given by play_episode)  :
+        returns the average true reward per episode and the average episode length
+        used for monitoring the behaviour of the agent
+        """
         n_batch = len(map_results)
         reward_ep, len_ep  = [], []
         for i in range(n_batch):
@@ -138,6 +183,10 @@ class SimplePPO:
 
 
     def one_training_step(self, map_results):
+        """
+        from map_results (list of batch_size lists of transitions given by play_episode)  :
+        does one training step of PPO
+        """
         dataset = self.get_dataset(map_results)
         dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=1)
         kl_data = DataLoader(dataset, batch_size= len(dataset), shuffle=True, num_workers=1)
@@ -180,7 +229,7 @@ class SimplePPO:
 if __name__ == "__main__":
     torch.manual_seed(0)
     size = (12, 12)
-    ppo = SimplePPO(size, 'simple_ppo_debug', walls=True, n_iter=10000, batch_size=30, hunger=15)
+    ppo = SimplePPO(size, 'simple_ppo_debug', walls=True, n_iter=10000, batch_size=30, hunger=15, seed=10)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0

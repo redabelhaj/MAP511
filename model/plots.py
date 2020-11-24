@@ -27,9 +27,11 @@ def plot(path, label, N=20):
 
 plot("ep_lengths_ppo_1730_vanilla_2.txt", label = 'vanilla2')
 plot("ep_lengths_ppo_1730_vanilla.txt", label = 'vanilla')
-plot("ep_lengths_ppo_1730_noloop.txt", label = "RS : closer +1; further -2")
+# plot("ep_lengths_ppo_1730_noloop.txt", label = "RS : closer +1; further -2")
 # plot("ep_lengths_ppo_1730_noloop2.txt", label = "RS : closer +1; further -2 ; 2")
-plot("ep_lengths_ppo_1730_distRS10.txt", label = 'RS distance : bonus = 10')
+# plot("ep_lengths_ppo_1730_distRS10.txt", label = 'RS distance : bonus = 10')
+plot("ep_lengths_ppo_rotate.txt", label = 'vanilla + rotation')
+
 
 plt.xlabel("# batch")
 plt.ylabel("length")
@@ -40,7 +42,7 @@ plt.clf()
 
 # plot("ep_rewards_ppo_1730_vanilla_2.txt", label = 'vanilla2')
 plot("ep_rewards_ppo_1730_vanilla.txt", label = 'vanilla')
-plot("ep_rewards_ppo_rotate.txt", label = 'vanilla + rotation')
+# plot("ep_rewards_ppo_rotate.txt", label = 'vanilla + rotation')
 
 # plot("ep_rewards_ppo_1730_noloop.txt", label = "RS : closer +1; further -2")
 # plot("ep_rewards_ppo_1730_noloop2.txt", label = "RS : closer +1; further -2; 2")
@@ -52,11 +54,11 @@ plot("ep_rewards_ppo_rotate.txt", label = 'vanilla + rotation')
 # plot("ep_rewards_ppo_1730_vanilla_entropy_10.txt", label = 'vanilla w/ entropy bonus 10')
 # plot("ep_rewards_ppo_1730_vanilla_entropy_100.txt", label = 'vanilla w/ entropy bonus 100')
 
-plot("ep_rewards_ppo_rotate_noloops_hunger50.txt", label = 'rotation, hunger 50, RS : closer +1, further -4')
+# plot("ep_rewards_ppo_rotate_noloops_hunger50.txt", label = 'rotation, hunger 50, RS : closer +1, further -4')
 
 plt.ylabel("rewards")
 plt.xlabel("# batch")
-plt.title("Reward per episode- MaxHunger = 15 - Batch size = 30")
+plt.title("Reward per episode- MaxHunger = 17 - Batch size = 30")
 plt.legend()
 plt.savefig("plots/images/episode_rewards")
 plt.clf()

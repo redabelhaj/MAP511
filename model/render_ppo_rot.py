@@ -11,7 +11,7 @@ import numpy as np
 
 size = (12,12)
 ppo = PPO_RS_ROT(size, 'ppo_img', n_iter=10000, batch_size=64, seed=10,hunger=17)
-ppo.net.load_state_dict(torch.load("saved_models/ppo_rotate_test_state_dict.txt"))
+ppo.net.load_state_dict(torch.load("saved_models/ppo_rotate_state_dict.txt"))
 
 
 new_obs, dire = ppo.env.reset()
