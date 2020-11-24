@@ -39,7 +39,7 @@ class SimplePPO:
     """
     - Class for the PPO algorithm with a simple state space (5 numbers) and possibility to do reward shaping
     """
-    def __init__(self, size, name,hunger = 15, hidden_size = 30,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2,dist_bonus = .2, seed = -1, use_entropy = False, beta = .2):
+    def __init__(self, size, name,hunger = 15, hidden_size = 30,walls = True,n_iter = 500, batch_size = 32,gamma = .99, n_epochs=5, eps=.2, target_kl=1e-2,rs = 'none', dist_bonus = .2, seed = -1, use_entropy = False, beta = .2):
         self.name = name
         self.batch_size = batch_size
         self.n_iter = n_iter
@@ -50,7 +50,9 @@ class SimplePPO:
         self.gamma = gamma
         self.target_kl = target_kl
         self.hunger = hunger
-        self.dist_bonus = dist_bonus # used in the case of reward shaping with differential distance
+        self.rs = rs ## reward shaping :  'none', 'close bonus' or 'diff dist bonus'
+        self.dist_bonus = dist_bonus # used if rs = 'diff dist bonus'
+
 
         # entropy bonus params 
         self.use_entropy = use_entropy
@@ -105,13 +107,11 @@ class SimplePPO:
                 close_rew = 0
             else:
                 close_rew = -2
-            ## commenter/décommenter selon reward shaping ou pas / quel type de reward shaping 
-             
-            newrew = true_rew + close_rew ### reward shaping avec un bonus de +1 si on s'approche, -2 si on s'éloigne
-            # newrew = true_rew ## pas de reward shaping
-            # newrew = true_rew - self.dist_bonus*diff_dist # reward shaping basé sur un bonus basé sur la différence de distance
-
             
+            if self.rs == 'none': newrew = true_rew
+            elif self.rs == 'close bonus' : newrew =  true_rew + close_rew
+            elif self.rs == 'diff dist bonus': newrew = true_rew - self.dist_bonus*diff_dist
+            else: raise Exception('unrecognized reward shaping mode')
             
             sts.append(s_t)
             ats.append(a_t)
