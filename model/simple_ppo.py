@@ -266,7 +266,7 @@ class SimplePPO:
     
 if __name__ == "__main__":
     size = (12, 12)
-    ppo = SimplePPO(size, 'simple_ppo_debug',  n_iter=10000, batch_size=30, hunger=17, seed=10, use_entropy=False)
+    ppo = SimplePPO(size, 'debug',  n_iter=3, batch_size=3, hunger=17, seed=10, use_entropy=True, beta=.4)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0
@@ -275,7 +275,7 @@ if __name__ == "__main__":
     # ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))
 
     
-    # ppo.truncate_all_files() # uncomment to delete the files corresponding to the name
+    ppo.truncate_all_files() # uncomment to delete the files corresponding to the name
     debut = time.time()
     
     for it in range(ppo.n_iter):

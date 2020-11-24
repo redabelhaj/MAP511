@@ -323,10 +323,10 @@ class PPO_RS_ROT:
 
 if __name__ == "__main__":
     size = (12, 12)
-    ppo = PPO_RS_ROT(size, 'ppo_rotate_noloops_hunger50', hunger=50, n_iter=1000, batch_size=30,seed = 10, beta=0, use_entropy=False)
+    ppo = PPO_RS_ROT(size, 'debug', hunger=50, n_iter=3, batch_size=3,seed = 10, beta=0.5, use_entropy=True)
     bs = ppo.batch_size
-    best_reward = 30
-    best_length = 96
+    best_reward = -1
+    best_length =0
 
     ### uncomment to resume training from a saved model 
     # ppo.net.load_state_dict(torch.load('saved_models/' +ppo.name + '_state_dict.txt'))

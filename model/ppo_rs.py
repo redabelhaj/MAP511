@@ -197,9 +197,6 @@ class PPO_RS:
             reward_ep.append(r)
         return sum(reward_ep)/n_batch, sum(len_ep)/n_batch
 
-
-
-
     def one_training_step(self, map_results):
         """
         from map_results (list of batch_size lists of transitions given by play_episode)  :
@@ -289,7 +286,7 @@ class PPO_RS:
 
 if __name__ == "__main__":
     size = (12, 12)
-    ppo = PPO_RS(size, 'ppo_1730_vanilla_entropy_1', hunger=17, n_iter=300, batch_size=30,seed = 10, beta=1, use_entropy=True)
+    ppo = PPO_RS(size, 'debug', hunger=17, n_iter=3, batch_size=3,seed = 10, beta=1, use_entropy=True)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0
