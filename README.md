@@ -16,3 +16,7 @@ Sometimes the path to the directory must be added with sys with sys.path.append(
 numpy
 torch
 tqdm
+
+
+### Authors 
+Hugo Artigas, Reda Belhaj-Soullami & Mohamed Mimouna
