@@ -1,6 +1,5 @@
 import gym
 import sys
-sys.path.append("/Users/redabelhaj/Desktop/MAP511")
 import sneks
 from sneks.envs.snek import SingleSnek
 import numpy as np
@@ -266,7 +265,7 @@ class SimplePPO:
     
 if __name__ == "__main__":
     size = (12, 12)
-    ppo = SimplePPO(size, 'debug',  n_iter=3, batch_size=3, hunger=17, seed=10, use_entropy=True, beta=.4)
+    ppo = SimplePPO(size, 'debug',  n_iter=3, batch_size=3, hunger=17, seed=10, use_entropy=False, beta=.4)
     bs = ppo.batch_size
     best_reward = -1
     best_length = 0

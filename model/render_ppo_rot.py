@@ -1,5 +1,4 @@
 import sys
-sys.path.append("/Users/redabelhaj/Desktop/Sneks-master")
 
 from ppo_rotate import ActorCriticNet, PPO_ROT
 import torch

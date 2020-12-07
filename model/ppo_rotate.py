@@ -1,6 +1,5 @@
 import gym
 import sys
-sys.path.append("/Users/redabelhaj/Desktop/MAP511")
 import sneks
 from sneks.envs.snek import SingleSnek
 import numpy as np

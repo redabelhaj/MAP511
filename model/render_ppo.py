@@ -1,5 +1,4 @@
 import sys
-sys.path.append("/Users/redabelhaj/Desktop/Sneks-master")
 
 from ppo import ActorCriticNet, PPO
 import torch
